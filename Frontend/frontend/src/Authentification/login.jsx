@@ -1,33 +1,44 @@
-function Login() {
+import { jwtDecode } from "jwt-decode";
+import { useNavigate } from "react-router-dom";
+import logo from "../Images/logo.png";
+import "@fortawesome/fontawesome-free/css/all.min.css";
+function Login1() {
+  const navigate = useNavigate();
+  const token = localStorage.getItem("token");
+  if (!token) {
+    return <h2>Accès refusé 🚫 — veuillez vous connecter</h2>;
+  }
+  try {
+    const decoded = jwtDecode(token);
+    const handleLogout = () => {
+      localStorage.removeItem("token");
+      navigate("/");
+    };
     return (
-
-        <>
-            <div className="flex justify-center ">
-                <div className="bg-blue-500 text-white w-[50%] h-[100vh] py-48 rounded-r-[170px]">
-                    <h1 className="text-2xl font-bold">Hello , Welcome</h1>
-                    <p>
-                        Don't Have an Acount ? </p>
-                    <button className="border text-white rounded-lg px-4 p-1">Register</button>
-                </div>
-                <div className="w-[50%] py-20 h-[300vh]">
-                    <div class=" p-10 rounded-r-lg ">
-                        <h2 class="text-3xl font-bold mb-6 text-center">Login</h2>
-
-                        <input type="text" placeholder="Username" class="w-full border rounded px-4 py-2 mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        <input type="password" placeholder="Password" class="w-full border rounded px-4 py-2 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-
-
-                        <button class="w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600 transition">Login</button>
-
-                      
-                    </div>
-
-                </div>
-            </div>
-
-        </>
-
+      <div className="h-screen w-32 bg-white shadow-lg flex flex-col justify-between">
+        {/* Logo en haut */}
+        <div className="p-0 m-0">
+          <img src={logo} alt="Logo" className="h-20" />
+        </div>
+        {/* Profil utilisateur en bas */}
+        <div className="p-2 border-t flex flex-col items-center space-y-2">
+          <img
+            src="https://i.pravatar.cc/60"
+            alt="avatar"
+            className="w-8 h-8 rounded-full border-2 border-blue-500"
+          />
+          <span className="font-semibold text-gray-700 text-[10px]">{decoded.nom}</span>
+         <button
+  onClick={handleLogout}
+  className="text-blue-500 hover:text-red-700 text-xl"
+>
+  <i className="fas fa-sign-out-alt"></i>
+</button>
+        </div>
+      </div>
     );
+  } catch (error) {
+    return <h2>Token invalide ou expiré</h2>;
+  }
 }
-
-export default Login;
+export default Login1;

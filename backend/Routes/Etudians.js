@@ -20,18 +20,29 @@ router.post("/login", (req, res) => {
       if (passwd !== results[0].passwd)
         return res.status(400).json({ error: "Mot de passe incorrect" });
 
-      res.json({ message: "Connexion réussie", user: results[0] });
+      // ✅ Générer un token avec email + nom
+      const token = jwt.sign(
+        { email: results[0].email, nom: results[0].nom },
+        "SECRET_KEY",
+        { expiresIn: "1h" }
+      );
+      res.json({ token });
     }
   );
 });
+// inscription
+router.post("/register",async(req,res)=>{
+  const {nom,email,passwd}=req.body
+  connection.query(
+    "INSERT INTO utilisateur (nom,email,passwd) VALUES(?,?,?)",[nom,email,passwd],(err,result)=>{
+      if(err) return res.status(500).json(err)
 
+      const token=jwt.sign({nom,email,passwd},"SECRET_KEY", { expiresIn: "1h" })
+       res.json({ token });
+    }
+  )
+})
 
-
-// Route avec paramètre
-router.get("/etudiant/:id", (req, res) => {
-  const id = req.params.id;
-  res.send(`ID de l'étudiant : ${id}`);
-});
 
 router.get("/admin", (req, res) => {
   connection.query("SELECT * FROM utilisateur", (_, results) => {
