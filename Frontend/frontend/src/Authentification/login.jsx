@@ -2,7 +2,7 @@ import { jwtDecode } from "jwt-decode";
 import { useNavigate } from "react-router-dom";
 import logo from "../Images/logo.png";
 import "@fortawesome/fontawesome-free/css/all.min.css";
-
+import { Link } from "react-router-dom";
 /* ------------------------------------------------------------------ */
 /*  Données de démonstration                                          */
 /* ------------------------------------------------------------------ */
@@ -89,7 +89,7 @@ function NavSection({ title, items }) {
       {items.map((item) => (
         <a
           key={item.label}
-          href="#"
+          href="/copropriteire"
           className="flex items-center gap-3 px-4 py-2.5 text-indigo-100 hover:bg-white/10 rounded-lg mx-2 transition-colors text-sm"
         >
           <i className={`fas ${item.icon} w-4 text-center text-indigo-200`}></i>
@@ -246,7 +246,7 @@ function Login1() {
 
           <div className="p-6 flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center">
-              <img src={logo} className="h-6" alt="" />
+              <img src="" className="h-6" alt="" />
             </div>
             <div>
               <p className="font-extrabold leading-tight">SyndicPro</p>
@@ -310,7 +310,10 @@ function Login1() {
                   <p className="font-bold text-sm leading-tight">{decoded.nom}</p>
                   <p className="text-xs text-slate-400 leading-tight">Administrateur</p>
                 </div>
-                <i className="fas fa-chevron-down text-xs text-slate-300"></i>
+<button   onClick={handleLogout}>
+                  <i className="fas fa-chevron-down text-xs text-slate-300"></i>
+
+</button>
               </div>
             </div>
           </div>
