@@ -1,13 +1,20 @@
 import { Link } from "react-router-dom";
+import logo from "../Images/logo.png"
+import {
+  LayoutDashboard,
+  Users,
+  Building2,
+  Wallet,
+  FileText,
+} from "lucide-react";
 function Navbar() {
 
     return (
         <nav className="w-64 h-screen bg-indigo-700 text-white fixed left-0 top-0">
-                <h2 className="text-xl font-bold p-5">SyndicPro</h2>
-
+<img src={logo} alt="" />
                 <ul>
                     <li>
-                        <Link to="/test">Dashboard</Link>
+                        <Link to="/test"> Dashboard</Link>
                     </li>
                     <li>
                         <Link to="/cop">Copropriétaires</Link>
