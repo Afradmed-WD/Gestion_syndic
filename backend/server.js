@@ -1,11 +1,14 @@
-const express=require("express")
-const app=express()
+const express = require("express");
 const cors = require("cors");
+const app = express();
+
 app.use(cors());
 app.use(express.json());
 
-const EtudiantisRouter=require("./Routes/Etudians")
-app.get("/etudiant/:id",EtudiantisRouter)
+const EtudiantisRouter = require("./Routes/Etudians");
 app.use("/", EtudiantisRouter);
 
-app.listen(3000)
+const PORT = 3000;
+app.listen(PORT, () => {
+  console.log(`Serveur démarré sur http://localhost:${PORT}`);
+});
