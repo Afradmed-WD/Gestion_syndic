@@ -5,6 +5,7 @@ import logo from "../Images/logo.png";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 
 const API_URL = "http://localhost:3000/coproprietaires";
+const RESIDENCES_URL = "http://localhost:3000/residences";
 
 const AVATAR_COLORS = [
   { bg: "bg-indigo-100", text: "text-indigo-600" },
@@ -21,6 +22,12 @@ function initialsOf(nom, prenom) {
 function formatDate(d) {
   if (!d) return "–";
   return new Date(d).toLocaleDateString("fr-FR");
+}
+
+// Pour un <input type="date">, il faut le format YYYY-MM-DD
+function toInputDate(d) {
+  if (!d) return "";
+  return new Date(d).toISOString().slice(0, 10);
 }
 
 const NAV_GESTION = [
@@ -87,18 +94,207 @@ function Pagination({ page, totalPages, onChange }) {
   );
 }
 
+// ---------- Popup Ajouter / Modifier / Voir ----------
+function OwnerModal({ mode, owner, residences, onClose, onSaved, token }) {
+  const readOnly = mode === "view";
+  const [form, setForm] = useState({
+    nom: owner?.nom || "",
+    email: owner?.email || "",
+    passwd: "",
+    cin: owner?.cin || "",
+    profession: owner?.profession || "",
+    date_naissance: toInputDate(owner?.date_naissance),
+    date_adhesion: toInputDate(owner?.date_adhesion) || toInputDate(new Date()),
+    residence_id: owner?.residence_id || "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const isEdit = mode === "edit";
+      const url = isEdit ? `${API_URL}/${owner.id}` : API_URL;
+      const method = isEdit ? "PUT" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(form),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Erreur lors de l'enregistrement");
+      }
+
+      onSaved();
+      onClose();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const title = mode === "add" ? "Ajouter un copropriétaire" : mode === "edit" ? "Modifier le copropriétaire" : "Détails du copropriétaire";
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h2 className="text-lg font-bold text-slate-700">{title}</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && <p className="text-rose-500 text-sm bg-rose-50 rounded-lg px-3 py-2">{error}</p>}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Nom complet</label>
+              <input
+                name="nom" value={form.nom} onChange={handleChange} required disabled={readOnly}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm disabled:bg-slate-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Email</label>
+              <input
+                type="email" name="email" value={form.email} onChange={handleChange} required disabled={readOnly}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm disabled:bg-slate-50"
+              />
+            </div>
+          </div>
+
+          {mode === "add" && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Mot de passe initial</label>
+              <input
+                type="password" name="passwd" value={form.passwd} onChange={handleChange}
+                placeholder="Laisser vide pour un mot de passe par défaut"
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+              />
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">CIN</label>
+              <input
+                name="cin" value={form.cin} onChange={handleChange} disabled={readOnly}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm disabled:bg-slate-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Profession</label>
+              <input
+                name="profession" value={form.profession} onChange={handleChange} disabled={readOnly}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm disabled:bg-slate-50"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Date de naissance</label>
+              <input
+                type="date" name="date_naissance" value={form.date_naissance} onChange={handleChange} disabled={readOnly}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm disabled:bg-slate-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1">Date d'adhésion</label>
+              <input
+                type="date" name="date_adhesion" value={form.date_adhesion} onChange={handleChange} disabled={readOnly}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm disabled:bg-slate-50"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 mb-1">Résidence</label>
+            <select
+              name="residence_id" value={form.residence_id} onChange={handleChange} disabled={readOnly}
+              className="w-full px-3 py-2 rounded-lg border border-slate-200 text-sm disabled:bg-slate-50"
+            >
+              <option value="">— Sélectionner —</option>
+              {residences.map((r) => (
+                <option key={r.id} value={r.id}>{r.nom}</option>
+              ))}
+            </select>
+          </div>
+
+          {!readOnly && (
+            <div className="flex justify-end gap-3 pt-2">
+              <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-slate-50">
+                Annuler
+              </button>
+              <button
+                type="submit" disabled={saving}
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60"
+              >
+                {saving ? "Enregistrement..." : "Enregistrer"}
+              </button>
+            </div>
+          )}
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Popup de confirmation de suppression ----------
+function ConfirmDeleteModal({ owner, onClose, onConfirm, deleting }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6">
+        <h2 className="text-lg font-bold text-slate-700 mb-2">Supprimer le copropriétaire</h2>
+        <p className="text-sm text-slate-500 mb-6">
+          Êtes-vous sûr de vouloir supprimer <span className="font-semibold">{owner.prenom} {owner.nom}</span> ? Cette action est irréversible.
+        </p>
+        <div className="flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-slate-50">
+            Annuler
+          </button>
+          <button
+            onClick={onConfirm} disabled={deleting}
+            className="px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60"
+          >
+            {deleting ? "Suppression..." : "Supprimer"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Coproprietaires() {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
   const [owners, setOwners] = useState([]);
+  const [residences, setResidences] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const perPage = 8;
 
-  useEffect(() => {
-    if (!token) return;
+  const [modal, setModal] = useState(null); // { mode: "add" | "edit" | "view", owner }
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const loadOwners = () => {
+    setLoading(true);
     fetch(API_URL, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => {
         if (!res.ok) throw new Error("Erreur réseau");
@@ -107,6 +303,16 @@ function Coproprietaires() {
       .then(setOwners)
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (!token) return;
+    loadOwners();
+    fetch(RESIDENCES_URL, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setResidences)
+      .catch(() => setResidences([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   if (!token) return <h2 className="text-center mt-10">Accès refusé 🚫</h2>;
@@ -121,6 +327,23 @@ function Coproprietaires() {
   const handleLogout = () => {
     localStorage.removeItem("token");
     navigate("/");
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`${API_URL}/${deleteTarget.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Erreur lors de la suppression");
+      setDeleteTarget(null);
+      loadOwners();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const filtered = owners.filter(
@@ -195,7 +418,10 @@ function Coproprietaires() {
               <h1 className="text-3xl font-bold text-slate-700">Copropriétaires</h1>
               <p className="text-slate-400 mt-1">Liste de tous les copropriétaires enregistrés.</p>
             </div>
-            <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 transition-colors text-white text-sm font-semibold px-4 py-2.5 rounded-xl">
+            <button
+              onClick={() => setModal({ mode: "add", owner: null })}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 transition-colors text-white text-sm font-semibold px-4 py-2.5 rounded-xl"
+            >
               <i className="fas fa-plus"></i>
               Ajouter un copropriétaire
             </button>
@@ -254,9 +480,15 @@ function Coproprietaires() {
                           <td className="text-slate-500 whitespace-nowrap">{formatDate(o.date_adhesion)}</td>
                           <td className="pr-6">
                             <div className="flex items-center justify-end gap-3 text-slate-400">
-                              <button className="hover:text-indigo-500 transition-colors"><i className="fas fa-eye"></i></button>
-                              <button className="hover:text-indigo-500 transition-colors"><i className="fas fa-pen"></i></button>
-                              <button className="hover:text-rose-500 transition-colors"><i className="fas fa-trash-alt"></i></button>
+                              <button onClick={() => setModal({ mode: "view", owner: o })} className="hover:text-indigo-500 transition-colors">
+                                <i className="fas fa-eye"></i>
+                              </button>
+                              <button onClick={() => setModal({ mode: "edit", owner: o })} className="hover:text-indigo-500 transition-colors">
+                                <i className="fas fa-pen"></i>
+                              </button>
+                              <button onClick={() => setDeleteTarget(o)} className="hover:text-rose-500 transition-colors">
+                                <i className="fas fa-trash-alt"></i>
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -277,6 +509,26 @@ function Coproprietaires() {
 
         </div>
       </main>
+
+      {modal && (
+        <OwnerModal
+          mode={modal.mode}
+          owner={modal.owner}
+          residences={residences}
+          token={token}
+          onClose={() => setModal(null)}
+          onSaved={loadOwners}
+        />
+      )}
+
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          owner={deleteTarget}
+          deleting={deleting}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={handleDelete}
+        />
+      )}
     </div>
   );
 }

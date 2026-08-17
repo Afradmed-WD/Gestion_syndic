@@ -5,12 +5,26 @@ import logo from "../Images/logo.png";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 
 const API_URL = "http://localhost:3000/paiements";
+const COPRO_URL = "http://localhost:3000/coproprietaires";
 
 const STATUS_STYLES = {
   "Payé": "bg-emerald-50 text-emerald-600",
   "En attente": "bg-amber-50 text-amber-600",
   "Annulé": "bg-rose-50 text-rose-500",
 };
+
+// Traduction FR (affiché) <-> valeurs enum réelles envoyées au backend
+const STATUT_OPTIONS = [
+  { value: "valide", label: "Payé" },
+  { value: "en_attente", label: "En attente" },
+  { value: "annule", label: "Annulé" },
+];
+const MODE_OPTIONS = [
+  { value: "especes", label: "Espèces" },
+  { value: "virement", label: "Virement" },
+  { value: "carte", label: "Carte" },
+  { value: "cheque", label: "Chèque" },
+];
 
 const AVATAR_COLORS = [
   { bg: "bg-indigo-100", text: "text-indigo-600" },
@@ -28,6 +42,14 @@ function initialsOf(nom) {
 function formatDate(d) {
   if (!d) return "–";
   return new Date(d).toLocaleDateString("fr-FR");
+}
+
+// Formate une date pour un <input type="date"> (YYYY-MM-DD)
+function toInputDate(d) {
+  if (!d) return "";
+  const date = new Date(d);
+  if (isNaN(date)) return "";
+  return date.toISOString().slice(0, 10);
 }
 
 const NAV_GESTION = [
@@ -119,19 +141,203 @@ function Pagination({ page, totalPages, onChange }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  MODALS                                                              */
+/* ------------------------------------------------------------------ */
+
+function Modal({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h3 className="text-lg font-bold text-slate-700">{title}</h3>
+          <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400">
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+        <div className="p-6">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function PaiementForm({ initial, coproprietaires, onCancel, onSubmit, submitting, error }) {
+  const [form, setForm] = useState({
+    coproprietaire_id: initial?.coproprietaire_id || "",
+    charge_id: initial?.charge_id ?? null,
+    montant: initial?.montant || "",
+    mode_paiement: initial?.mode_paiement || "especes",
+    date_paiement: toInputDate(initial?.date) || toInputDate(new Date()),
+    statut: initial?.statut || "en_attente",
+  });
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((f) => ({ ...f, [name]: value }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit(form);
+  };
+
+  const inputClass =
+    "w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200";
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {error && <p className="text-sm text-rose-500 bg-rose-50 rounded-lg px-3 py-2">{error}</p>}
+
+      <div>
+        <label className="block text-xs font-semibold text-slate-500 mb-1">Copropriétaire *</label>
+        <select name="coproprietaire_id" value={form.coproprietaire_id} onChange={handleChange} required className={inputClass}>
+          <option value="">-- Sélectionner --</option>
+          {coproprietaires.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nom}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-slate-500 mb-1">Montant (MAD) *</label>
+        <input
+          type="number"
+          step="0.01"
+          min="0"
+          name="montant"
+          value={form.montant}
+          onChange={handleChange}
+          required
+          className={inputClass}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 mb-1">Mode de paiement</label>
+          <select name="mode_paiement" value={form.mode_paiement} onChange={handleChange} className={inputClass}>
+            {MODE_OPTIONS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 mb-1">Statut</label>
+          <select name="statut" value={form.statut} onChange={handleChange} className={inputClass}>
+            {STATUT_OPTIONS.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-slate-500 mb-1">Date de paiement</label>
+        <input type="date" name="date_paiement" value={form.date_paiement} onChange={handleChange} className={inputClass} />
+      </div>
+
+      <div className="flex items-center justify-end gap-3 pt-2">
+        <button type="button" onClick={onCancel} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-slate-50">
+          Annuler
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60"
+        >
+          {submitting ? "Enregistrement..." : "Enregistrer"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function DeleteConfirm({ paiement, onCancel, onConfirm, submitting, error }) {
+  return (
+    <div>
+      {error && <p className="text-sm text-rose-500 bg-rose-50 rounded-lg px-3 py-2 mb-4">{error}</p>}
+      <p className="text-sm text-slate-600">
+        Voulez-vous vraiment supprimer le paiement de <span className="font-semibold">{paiement.resident || "cet utilisateur"}</span> d'un
+        montant de <span className="font-semibold">{paiement.montant} MAD</span> ? Cette action est irréversible.
+      </p>
+      <div className="flex items-center justify-end gap-3 pt-6">
+        <button onClick={onCancel} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-slate-50">
+          Annuler
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={submitting}
+          className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-rose-500 hover:bg-rose-600 disabled:opacity-60"
+        >
+          {submitting ? "Suppression..." : "Supprimer"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ViewDetails({ paiement, onClose }) {
+  const row = [
+    ["Résident", paiement.resident || "–"],
+    ["Appartement", paiement.appartement || "–"],
+    ["Montant", `${paiement.montant} MAD`],
+    ["Mode de paiement", paiement.mode],
+    ["Date", formatDate(paiement.date)],
+    ["Statut", paiement.statut],
+  ];
+  return (
+    <div>
+      <dl className="divide-y divide-slate-100">
+        {row.map(([label, value]) => (
+          <div key={label} className="flex items-center justify-between py-2.5 text-sm">
+            <dt className="text-slate-400">{label}</dt>
+            <dd className="font-semibold text-slate-700">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="flex justify-end pt-6">
+        <button onClick={onClose} className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700">
+          Fermer
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  PAGE PRINCIPALE                                                     */
+/* ------------------------------------------------------------------ */
+
 function Paiements() {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
   const [paiements, setPaiements] = useState([]);
   const [stats, setStats] = useState(null);
+  const [coproprietaires, setCoproprietaires] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const perPage = 8;
 
-  useEffect(() => {
-    if (!token) return;
+  // popup state: { mode: "add" | "edit" | "delete" | "view", paiement?: object }
+  const [modal, setModal] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState(null);
+
+  const authHeaders = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+
+  const loadPaiements = () => {
+    setLoading(true);
     fetch(API_URL, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => {
         if (!res.ok) throw new Error("Erreur réseau");
@@ -141,12 +347,22 @@ function Paiements() {
         if (Array.isArray(json?.paiements)) {
           setPaiements(json.paiements);
           setStats(json.stats);
+          setError(null);
         } else {
           setError(json?.error || "Réponse API invalide");
         }
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (!token) return;
+    loadPaiements();
+    fetch(COPRO_URL, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((json) => setCoproprietaires(Array.isArray(json) ? json : []))
+      .catch(() => setCoproprietaires([]));
   }, [token]);
 
   if (!token) return <h2 className="text-center mt-10">Accès refusé 🚫</h2>;
@@ -161,6 +377,92 @@ function Paiements() {
   const handleLogout = () => {
     localStorage.removeItem("token");
     navigate("/");
+  };
+
+  const openAdd = () => {
+    setFormError(null);
+    setModal({ mode: "add" });
+  };
+  const openEdit = async (p) => {
+    setFormError(null);
+    setModal({ mode: "edit", paiement: null, loading: true });
+    try {
+      const res = await fetch(`${API_URL}/${p.id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Erreur lors du chargement du paiement");
+      setModal({ mode: "edit", paiement: json });
+    } catch (err) {
+      setModal(null);
+      setError(err.message);
+    }
+  };
+  const openView = (p) => setModal({ mode: "view", paiement: p });
+  const openDelete = (p) => {
+    setFormError(null);
+    setModal({ mode: "delete", paiement: p });
+  };
+  const closeModal = () => {
+    setModal(null);
+    setFormError(null);
+  };
+
+  const handleCreate = async (form) => {
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify(form),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Erreur lors de la création");
+      closeModal();
+      loadPaiements();
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUpdate = async (form) => {
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const res = await fetch(`${API_URL}/${modal.paiement.id}`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify(form),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Erreur lors de la mise à jour");
+      closeModal();
+      loadPaiements();
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const res = await fetch(`${API_URL}/${modal.paiement.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Erreur lors de la suppression");
+      closeModal();
+      loadPaiements();
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const filtered = paiements.filter(
@@ -250,7 +552,10 @@ function Paiements() {
                 <i className="fas fa-file-export"></i>
                 Exporter
               </button>
-              <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 transition-colors text-white text-sm font-semibold px-4 py-2.5 rounded-xl">
+              <button
+                onClick={openAdd}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 transition-colors text-white text-sm font-semibold px-4 py-2.5 rounded-xl"
+              >
                 <i className="fas fa-plus"></i>
                 Enregistrer un paiement
               </button>
@@ -319,9 +624,9 @@ function Paiements() {
                           <td><StatusBadge statut={p.statut} /></td>
                           <td className="pr-6">
                             <div className="flex items-center justify-end gap-3 text-slate-400">
-                              <button className="hover:text-indigo-500 transition-colors"><i className="fas fa-eye"></i></button>
-                              <button className="hover:text-indigo-500 transition-colors"><i className="fas fa-pen"></i></button>
-                              <button className="hover:text-rose-500 transition-colors"><i className="fas fa-trash-alt"></i></button>
+                              <button onClick={() => openView(p)} className="hover:text-indigo-500 transition-colors"><i className="fas fa-eye"></i></button>
+                              <button onClick={() => openEdit(p)} className="hover:text-indigo-500 transition-colors"><i className="fas fa-pen"></i></button>
+                              <button onClick={() => openDelete(p)} className="hover:text-rose-500 transition-colors"><i className="fas fa-trash-alt"></i></button>
                             </div>
                           </td>
                         </tr>
@@ -342,6 +647,41 @@ function Paiements() {
 
         </div>
       </main>
+
+      {modal?.mode === "add" && (
+        <Modal title="Enregistrer un paiement" onClose={closeModal}>
+          <PaiementForm coproprietaires={coproprietaires} onCancel={closeModal} onSubmit={handleCreate} submitting={submitting} error={formError} />
+        </Modal>
+      )}
+
+      {modal?.mode === "edit" && (
+        <Modal title="Modifier le paiement" onClose={closeModal}>
+          {modal.paiement ? (
+            <PaiementForm
+              initial={modal.paiement}
+              coproprietaires={coproprietaires}
+              onCancel={closeModal}
+              onSubmit={handleUpdate}
+              submitting={submitting}
+              error={formError}
+            />
+          ) : (
+            <p className="text-slate-400 text-sm">Chargement...</p>
+          )}
+        </Modal>
+      )}
+
+      {modal?.mode === "view" && (
+        <Modal title="Détails du paiement" onClose={closeModal}>
+          <ViewDetails paiement={modal.paiement} onClose={closeModal} />
+        </Modal>
+      )}
+
+      {modal?.mode === "delete" && (
+        <Modal title="Supprimer le paiement" onClose={closeModal}>
+          <DeleteConfirm paiement={modal.paiement} onCancel={closeModal} onConfirm={handleDelete} submitting={submitting} error={formError} />
+        </Modal>
+      )}
     </div>
   );
 }

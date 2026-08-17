@@ -163,6 +163,21 @@ router.get("/dashboard", async (req, res) => {
   }
 });
 
+/* ------------------------------------------------------------------ */
+/*  COPROPRIÉTAIRES — CRUD complet                                     */
+/* ------------------------------------------------------------------ */
+
+// GET /residences → pour remplir le select dans le formulaire du frontend
+router.get("/residences", async (req, res) => {
+  try {
+    const residences = await query("SELECT id, nom FROM residences ORDER BY nom ASC");
+    res.json(residences);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors du chargement des résidences" });
+  }
+});
+
 // GET /coproprietaires → liste complète pour la page Copropriétaires
 // coproprietaires n'a ni nom/prenom/email (→ table utilisateur) ni statut/téléphone,
 // mais a un residence_id direct + cin/profession/date_naissance/date_adhesion
@@ -170,7 +185,7 @@ router.get("/coproprietaires", async (req, res) => {
   try {
     const results = await query(`
       SELECT c.id, u.nom, u.email, c.cin, c.profession,
-             c.date_naissance, c.date_adhesion, r.nom AS residence
+             c.date_naissance, c.date_adhesion, c.residence_id, r.nom AS residence
       FROM coproprietaires c
       JOIN utilisateur u ON u.id = c.utilisateur_id
       LEFT JOIN residences r ON r.id = c.residence_id
@@ -182,6 +197,115 @@ router.get("/coproprietaires", async (req, res) => {
     res.status(500).json({ error: "Erreur lors du chargement des copropriétaires" });
   }
 });
+
+// GET /coproprietaires/:id → un seul copropriétaire (utile pour la popup "voir")
+router.get("/coproprietaires/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const results = await query(
+      `
+      SELECT c.id, u.nom, u.email, c.cin, c.profession,
+             c.date_naissance, c.date_adhesion, c.residence_id, r.nom AS residence
+      FROM coproprietaires c
+      JOIN utilisateur u ON u.id = c.utilisateur_id
+      LEFT JOIN residences r ON r.id = c.residence_id
+      WHERE c.id = ?
+    `,
+      [id]
+    );
+    if (results.length === 0) return res.status(404).json({ error: "Copropriétaire introuvable" });
+    res.json(results[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors du chargement du copropriétaire" });
+  }
+});
+
+// POST /coproprietaires → créer un copropriétaire (crée aussi l'utilisateur lié)
+router.post("/coproprietaires", async (req, res) => {
+  const { nom, email, passwd, cin, profession, date_naissance, date_adhesion, residence_id } = req.body;
+
+  if (!nom || !email) {
+    return res.status(400).json({ error: "Nom et email requis" });
+  }
+
+  try {
+    const hashedPasswd = await bcrypt.hash(passwd || "changeme123", 10);
+
+    const userResult = await query(
+      "INSERT INTO utilisateur (nom, email, passwd) VALUES (?, ?, ?)",
+      [nom, email, hashedPasswd]
+    );
+    const utilisateur_id = userResult.insertId;
+
+    const coproResult = await query(
+      `INSERT INTO coproprietaires (utilisateur_id, cin, profession, date_naissance, date_adhesion, residence_id)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [utilisateur_id, cin || null, profession || null, date_naissance || null, date_adhesion || new Date(), residence_id || null]
+    );
+
+    res.status(201).json({ id: coproResult.insertId, message: "Copropriétaire créé" });
+  } catch (err) {
+    console.error(err);
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ error: "Cet email est déjà utilisé" });
+    }
+    res.status(500).json({ error: "Erreur lors de la création du copropriétaire" });
+  }
+});
+
+// PUT /coproprietaires/:id → modifier un copropriétaire
+router.put("/coproprietaires/:id", async (req, res) => {
+  const { id } = req.params;
+  const { nom, email, cin, profession, date_naissance, date_adhesion, residence_id } = req.body;
+
+  if (!nom || !email) {
+    return res.status(400).json({ error: "Nom et email requis" });
+  }
+
+  try {
+    const rows = await query("SELECT utilisateur_id FROM coproprietaires WHERE id = ?", [id]);
+    if (rows.length === 0) return res.status(404).json({ error: "Copropriétaire introuvable" });
+    const utilisateur_id = rows[0].utilisateur_id;
+
+    await query("UPDATE utilisateur SET nom = ?, email = ? WHERE id = ?", [nom, email, utilisateur_id]);
+
+    await query(
+      `UPDATE coproprietaires SET cin = ?, profession = ?, date_naissance = ?, date_adhesion = ?, residence_id = ?
+       WHERE id = ?`,
+      [cin || null, profession || null, date_naissance || null, date_adhesion || null, residence_id || null, id]
+    );
+
+    res.json({ message: "Copropriétaire mis à jour" });
+  } catch (err) {
+    console.error(err);
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ error: "Cet email est déjà utilisé" });
+    }
+    res.status(500).json({ error: "Erreur lors de la mise à jour du copropriétaire" });
+  }
+});
+
+// DELETE /coproprietaires/:id → supprimer un copropriétaire (et l'utilisateur lié)
+router.delete("/coproprietaires/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const rows = await query("SELECT utilisateur_id FROM coproprietaires WHERE id = ?", [id]);
+    if (rows.length === 0) return res.status(404).json({ error: "Copropriétaire introuvable" });
+
+    await query("DELETE FROM coproprietaires WHERE id = ?", [id]);
+    await query("DELETE FROM utilisateur WHERE id = ?", [rows[0].utilisateur_id]);
+
+    res.json({ message: "Copropriétaire supprimé" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors de la suppression du copropriétaire" });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/*  APPARTEMENTS                                                       */
+/* ------------------------------------------------------------------ */
 
 // GET /appartements → stats + liste complète pour la page Appartements
 // appartements n'a pas de date_acquisition ; le propriétaire vient de coproprietaire_id → utilisateur
@@ -213,6 +337,10 @@ router.get("/appartements", async (req, res) => {
     res.status(500).json({ error: "Erreur lors du chargement des appartements" });
   }
 });
+
+/* ------------------------------------------------------------------ */
+/*  CHARGES                                                             */
+/* ------------------------------------------------------------------ */
 
 // GET /charges → stats + liste complète pour la page Charges
 // charges n'a pas de colonne "categorie" (juste "libelle") ni de statut "en_attente"
@@ -247,6 +375,10 @@ router.get("/charges", async (req, res) => {
     res.status(500).json({ error: "Erreur lors du chargement des charges" });
   }
 });
+
+/* ------------------------------------------------------------------ */
+/*  PAIEMENTS                                                           */
+/* ------------------------------------------------------------------ */
 
 // GET /paiements → stats + liste complète pour la page Paiements
 // paiements n'a pas d'appartement_id direct (→ via charges) ni de statut "en retard"
@@ -289,5 +421,138 @@ router.get("/paiements", async (req, res) => {
     res.status(500).json({ error: "Erreur lors du chargement des paiements" });
   }
 });
+
+router.get("/reclamations", async (req, res) => {
+  try {
+    const [{ total }] = await query(`
+      SELECT COUNT(*) AS total FROM reclamations
+      WHERE MONTH(date_creation) = MONTH(CURDATE()) AND YEAR(date_creation) = YEAR(CURDATE())
+    `);
+    const [{ resolues }] = await query("SELECT COUNT(*) AS resolues FROM reclamations WHERE statut = 'resolue'");
+    const [{ enCours }] = await query("SELECT COUNT(*) AS enCours FROM reclamations WHERE statut = 'en_cours'");
+    const [{ rejetees }] = await query("SELECT COUNT(*) AS rejetees FROM reclamations WHERE statut = 'rejetee'");
+ 
+    const reclamations = await query(`
+      SELECT r.id, r.titre, u.nom AS resident, a.numero AS appartement, r.categorie,
+             CASE r.priorite
+               WHEN 'basse' THEN 'Basse'
+               WHEN 'normale' THEN 'Moyenne'
+               WHEN 'haute' THEN 'Haute'
+               WHEN 'urgente' THEN 'Urgente'
+             END AS priorite,
+             CASE r.statut
+               WHEN 'en_attente' THEN 'En attente'
+               WHEN 'en_cours' THEN 'En cours'
+               WHEN 'resolue' THEN 'Résolue'
+               WHEN 'rejetee' THEN 'Rejetée'
+             END AS statut,
+             r.date_creation AS date
+      FROM reclamations r
+      LEFT JOIN coproprietaires c ON c.id = r.coproprietaire_id
+      LEFT JOIN utilisateur u ON u.id = c.utilisateur_id
+      LEFT JOIN appartements a ON a.id = r.appartement_id
+      ORDER BY r.date_creation DESC
+    `);
+ 
+    res.json({ stats: { total, resolues, enCours, rejetees }, reclamations });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors du chargement des réclamations" });
+  }
+});
+
+ router.get("/paiements/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const results = await query(
+      `
+      SELECT p.id, p.coproprietaire_id, p.charge_id, u.nom AS resident,
+             a.numero AS appartement, p.montant, p.mode_paiement,
+             p.date_paiement AS date, p.statut
+      FROM paiements p
+      LEFT JOIN coproprietaires c ON c.id = p.coproprietaire_id
+      LEFT JOIN utilisateur u ON u.id = c.utilisateur_id
+      LEFT JOIN charges ch ON ch.id = p.charge_id
+      LEFT JOIN appartements a ON a.id = ch.appartement_id
+      WHERE p.id = ?
+      `,
+      [id]
+    );
+    if (results.length === 0) return res.status(404).json({ error: "Paiement introuvable" });
+    res.json(results[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors du chargement du paiement" });
+  }
+});
+ 
+// POST /paiements → créer un paiement
+router.post("/paiements", async (req, res) => {
+  const { coproprietaire_id, charge_id, montant, mode_paiement, date_paiement, statut } = req.body;
+ 
+  if (!coproprietaire_id || !montant) {
+    return res.status(400).json({ error: "Copropriétaire et montant requis" });
+  }
+ 
+  try {
+    const result = await query(
+      `INSERT INTO paiements (coproprietaire_id, charge_id, montant, mode_paiement, date_paiement, statut)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        coproprietaire_id,
+        charge_id || null,
+        montant,
+        mode_paiement || "especes",
+        date_paiement || new Date(),
+        statut || "en_attente",
+      ]
+    );
+    res.status(201).json({ id: result.insertId, message: "Paiement créé" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors de la création du paiement" });
+  }
+});
+ 
+// PUT /paiements/:id → modifier un paiement
+router.put("/paiements/:id", async (req, res) => {
+  const { id } = req.params;
+  const { coproprietaire_id, charge_id, montant, mode_paiement, date_paiement, statut } = req.body;
+ 
+  if (!coproprietaire_id || !montant) {
+    return res.status(400).json({ error: "Copropriétaire et montant requis" });
+  }
+ 
+  try {
+    const rows = await query("SELECT id FROM paiements WHERE id = ?", [id]);
+    if (rows.length === 0) return res.status(404).json({ error: "Paiement introuvable" });
+ 
+    await query(
+      `UPDATE paiements
+       SET coproprietaire_id = ?, charge_id = ?, montant = ?, mode_paiement = ?, date_paiement = ?, statut = ?
+       WHERE id = ?`,
+      [coproprietaire_id, charge_id || null, montant, mode_paiement, date_paiement, statut, id]
+    );
+ 
+    res.json({ message: "Paiement mis à jour" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors de la mise à jour du paiement" });
+  }
+});
+ 
+// DELETE /paiements/:id → supprimer un paiement
+router.delete("/paiements/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await query("DELETE FROM paiements WHERE id = ?", [id]);
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Paiement introuvable" });
+    res.json({ message: "Paiement supprimé" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors de la suppression du paiement" });
+  }
+});
+ 
 
 module.exports = router;

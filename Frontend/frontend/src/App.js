@@ -7,6 +7,7 @@ import Layout from "./Layout/layout";
 import Appartements from "./Appartement/Appartements";
 import Charges from "./Charges/Charges";
 import Paiements from "./Piements/Paiements";
+import Reclamations from "./Réclamations/Reclamations";
 
 
 function App() {
@@ -21,6 +22,7 @@ function App() {
           <Route path="/Appartements" element={<Appartements />} />
           <Route path="/Charges" element={<Charges />} />
           <Route path="/Paiements" element={<Paiements />} />
+          <Route path="/Réclamations" element={<Reclamations />} />
         </Route>
       </Routes>
     </BrowserRouter>
