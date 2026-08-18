@@ -4,42 +4,27 @@ import { useNavigate } from "react-router-dom";
 import logo from "../Images/logo.png";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 
-const API_URL = "http://localhost:3000/paiements";
-const COPRO_URL = "http://localhost:3000/coproprietaires";
+const API_URL = "http://localhost:3000/documents";
+const RESIDENCES_URL = "http://localhost:3000/residences";
 
-const STATUS_STYLES = {
-  "Payé": "bg-emerald-50 text-emerald-600",
-  "En attente": "bg-amber-50 text-amber-600",
-  "Annulé": "bg-rose-50 text-rose-500",
+const TYPE_ICON = {
+  Pdf: { icon: "fa-file-pdf", bg: "bg-rose-100", color: "text-rose-500" },
+  Docx: { icon: "fa-file-word", bg: "bg-sky-100", color: "text-sky-600" },
+  Xlsx: { icon: "fa-file-excel", bg: "bg-emerald-100", color: "text-emerald-600" },
+  Png: { icon: "fa-file-image", bg: "bg-indigo-100", color: "text-indigo-500" },
+  Jpg: { icon: "fa-file-image", bg: "bg-indigo-100", color: "text-indigo-500" },
 };
 
-// Traduction FR (affiché) <-> valeurs enum réelles envoyées au backend
-const STATUT_OPTIONS = [
-  { value: "valide", label: "Payé" },
-  { value: "en_attente", label: "En attente" },
-  { value: "annule", label: "Annulé" },
-];
-const MODE_OPTIONS = [
-  { value: "especes", label: "Espèces" },
-  { value: "virement", label: "Virement" },
-  { value: "carte", label: "Carte" },
-  { value: "cheque", label: "Chèque" },
-];
-
-const AVATAR_COLORS = [
-  { bg: "bg-indigo-100", text: "text-indigo-600" },
-  { bg: "bg-rose-100", text: "text-rose-600" },
-  { bg: "bg-amber-100", text: "text-amber-600" },
-  { bg: "bg-emerald-100", text: "text-emerald-600" },
-  { bg: "bg-sky-100", text: "text-sky-600" },
-];
-
-function initialsOf(nom) {
-  if (!nom) return "–";
-  return nom.split(" ").map((w) => w[0]).join("").toUpperCase();
+function formatDate(d) {
+  if (!d) return "–";
+  const date = new Date(d);
+  if (Number.isNaN(date.getTime())) return "–";
+  return {
+    date: date.toLocaleDateString("fr-FR"),
+    time: date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+  };
 }
 
-// Échappe une valeur pour l'export CSV
 function csvEscape(value) {
   const str = value === null || value === undefined ? "" : String(value);
   if (str.includes(";") || str.includes('"') || str.includes("\n")) {
@@ -49,46 +34,43 @@ function csvEscape(value) {
 }
 
 function exportToCSV(rows) {
-  const headers = ["Date", "Résident", "Appartement", "Montant (MAD)", "Mode de paiement", "Statut"];
+  const headers = ["Titre", "Résidence", "Type", "Publié par", "Date document", "Date d'ajout"];
   const lines = [
     headers.join(";"),
-    ...rows.map((p) =>
-      [formatDate(p.date), p.resident, p.appartement, p.montant, p.mode, p.statut].map(csvEscape).join(";")
-    ),
+    ...rows.map((r) => {
+      const dDoc = formatDate(r.date_document);
+      const dAjout = formatDate(r.created_at);
+      return [
+        r.titre,
+        r.residence,
+        r.type,
+        r.publie_par,
+        typeof dDoc === "object" ? dDoc.date : dDoc,
+        typeof dAjout === "object" ? dAjout.date : dAjout,
+      ]
+        .map(csvEscape)
+        .join(";");
+    }),
   ];
-  // BOM pour un affichage correct des accents dans Excel
   const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.setAttribute("download", `paiements_${new Date().toISOString().slice(0, 10)}.csv`);
+  link.setAttribute("download", `documents_${new Date().toISOString().slice(0, 10)}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
 
-function formatDate(d) {
-  if (!d) return "–";
-  return new Date(d).toLocaleDateString("fr-FR");
-}
-
-// Formate une date pour un <input type="date"> (YYYY-MM-DD)
-function toInputDate(d) {
-  if (!d) return "";
-  const date = new Date(d);
-  if (isNaN(date)) return "";
-  return date.toISOString().slice(0, 10);
-}
-
 const NAV_GESTION = [
   { icon: "fa-users", label: "Copropriétaires" },
   { icon: "fa-building", label: "Appartements" },
-  { icon: "fa-wallet", label: "Paiements", active: true },
+  { icon: "fa-wallet", label: "Paiements" },
   { icon: "fa-coins", label: "Charges" },
   { icon: "fa-exclamation-circle", label: "Réclamations" },
   { icon: "fa-bullhorn", label: "Annonces" },
-  { icon: "fa-file-alt", label: "Documents" },
+  { icon: "fa-file-alt", label: "Documents", active: true },
 ];
 const NAV_COMPTA = [
   { icon: "fa-file-invoice", label: "Factures" },
@@ -128,19 +110,18 @@ function StatCard({ icon, bg, label, value, note, tone }) {
       </div>
       <div>
         <p className="text-sm text-slate-400">{label}</p>
-        <p className="text-2xl font-bold text-slate-700 leading-tight">
-          {value} <span className="text-sm font-semibold text-slate-400">MAD</span>
-        </p>
+        <p className="text-2xl font-bold text-slate-700 leading-tight">{value}</p>
         <p className={`text-xs font-semibold ${tone}`}>{note}</p>
       </div>
     </div>
   );
 }
 
-function StatusBadge({ statut }) {
+function TypeIcon({ type }) {
+  const conf = TYPE_ICON[type] || { icon: "fa-file", bg: "bg-slate-100", color: "text-slate-400" };
   return (
-    <span className={`text-xs font-semibold px-3 py-1 rounded-full whitespace-nowrap ${STATUS_STYLES[statut] || "bg-slate-100 text-slate-500"}`}>
-      {statut}
+    <span className={`w-9 h-9 rounded-lg ${conf.bg} ${conf.color} flex items-center justify-center shrink-0`}>
+      <i className={`fas ${conf.icon}`}></i>
     </span>
   );
 }
@@ -190,24 +171,24 @@ function Modal({ title, onClose, children }) {
   );
 }
 
-function PaiementForm({ initial, coproprietaires, onCancel, onSubmit, submitting, error }) {
+function DocumentForm({ initial, residences, onCancel, onSubmit, submitting, error }) {
   const [form, setForm] = useState({
-    coproprietaire_id: initial?.coproprietaire_id || "",
-    charge_id: initial?.charge_id ?? null,
-    montant: initial?.montant || "",
-    mode_paiement: initial?.mode_paiement || "especes",
-    date_paiement: toInputDate(initial?.date) || toInputDate(new Date()),
-    statut: initial?.statut || "en_attente",
+    titre: initial?.titre || "",
+    residence_id: initial?.residence_id || "",
+    date_document: initial?.date_document ? initial.date_document.slice(0, 10) : "",
   });
+  const [fichier, setFichier] = useState(null);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setForm((f) => ({ ...f, [name]: value }));
-  };
+  const handleChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit(form);
+    const fd = new FormData();
+    fd.append("titre", form.titre);
+    fd.append("residence_id", form.residence_id);
+    fd.append("date_document", form.date_document);
+    if (fichier) fd.append("fichier", fichier);
+    onSubmit(fd);
   };
 
   const inputClass =
@@ -218,57 +199,34 @@ function PaiementForm({ initial, coproprietaires, onCancel, onSubmit, submitting
       {error && <p className="text-sm text-rose-500 bg-rose-50 rounded-lg px-3 py-2">{error}</p>}
 
       <div>
-        <label className="block text-xs font-semibold text-slate-500 mb-1">Copropriétaire *</label>
-        <select name="coproprietaire_id" value={form.coproprietaire_id} onChange={handleChange} required className={inputClass}>
+        <label className="block text-xs font-semibold text-slate-500 mb-1">Titre *</label>
+        <input type="text" name="titre" value={form.titre} onChange={handleChange} required className={inputClass} />
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-slate-500 mb-1">Résidence</label>
+        <select name="residence_id" value={form.residence_id} onChange={handleChange} className={inputClass}>
           <option value="">-- Sélectionner --</option>
-          {coproprietaires.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nom}
-            </option>
+          {residences.map((r) => (
+            <option key={r.id} value={r.id}>{r.nom}</option>
           ))}
         </select>
       </div>
 
       <div>
-        <label className="block text-xs font-semibold text-slate-500 mb-1">Montant (MAD) *</label>
-        <input
-          type="number"
-          step="0.01"
-          min="0"
-          name="montant"
-          value={form.montant}
-          onChange={handleChange}
-          required
-          className={inputClass}
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1">Mode de paiement</label>
-          <select name="mode_paiement" value={form.mode_paiement} onChange={handleChange} className={inputClass}>
-            {MODE_OPTIONS.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1">Statut</label>
-          <select name="statut" value={form.statut} onChange={handleChange} className={inputClass}>
-            {STATUT_OPTIONS.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <label className="block text-xs font-semibold text-slate-500 mb-1">Date du document</label>
+        <input type="date" name="date_document" value={form.date_document} onChange={handleChange} className={inputClass} />
       </div>
 
       <div>
-        <label className="block text-xs font-semibold text-slate-500 mb-1">Date de paiement</label>
-        <input type="date" name="date_paiement" value={form.date_paiement} onChange={handleChange} className={inputClass} />
+        <label className="block text-xs font-semibold text-slate-500 mb-1">
+          Fichier {initial ? "(laisser vide pour conserver le fichier actuel)" : "*"}
+        </label>
+        <label className="flex items-center justify-center gap-2 border-2 border-dashed border-slate-200 rounded-xl py-6 text-sm text-slate-400 cursor-pointer hover:border-indigo-400 hover:text-indigo-500 transition-colors">
+          <i className="fas fa-cloud-upload-alt"></i>
+          {fichier ? fichier.name : initial?.fichier || "Cliquer pour choisir un fichier"}
+          <input type="file" className="hidden" required={!initial} onChange={(e) => setFichier(e.target.files?.[0] || null)} />
+        </label>
       </div>
 
       <div className="flex items-center justify-end gap-3 pt-2">
@@ -287,13 +245,12 @@ function PaiementForm({ initial, coproprietaires, onCancel, onSubmit, submitting
   );
 }
 
-function DeleteConfirm({ paiement, onCancel, onConfirm, submitting, error }) {
+function DeleteConfirm({ document, onCancel, onConfirm, submitting, error }) {
   return (
     <div>
       {error && <p className="text-sm text-rose-500 bg-rose-50 rounded-lg px-3 py-2 mb-4">{error}</p>}
       <p className="text-sm text-slate-600">
-        Voulez-vous vraiment supprimer le paiement de <span className="font-semibold">{paiement.resident || "cet utilisateur"}</span> d'un
-        montant de <span className="font-semibold">{paiement.montant} MAD</span> ? Cette action est irréversible.
+        Voulez-vous vraiment supprimer <span className="font-semibold">{document.titre}</span> ? Cette action est irréversible.
       </p>
       <div className="flex items-center justify-end gap-3 pt-6">
         <button onClick={onCancel} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-slate-50">
@@ -311,19 +268,22 @@ function DeleteConfirm({ paiement, onCancel, onConfirm, submitting, error }) {
   );
 }
 
-function ViewDetails({ paiement, onClose }) {
-  const row = [
-    ["Résident", paiement.resident || "–"],
-    ["Appartement", paiement.appartement || "–"],
-    ["Montant", `${paiement.montant} MAD`],
-    ["Mode de paiement", paiement.mode],
-    ["Date", formatDate(paiement.date)],
-    ["Statut", paiement.statut],
+function ViewDetails({ document, onClose }) {
+  const dDoc = formatDate(document.date_document);
+  const dAjout = formatDate(document.created_at);
+  const rows = [
+    ["Titre", document.titre],
+    ["Résidence", document.residence || "–"],
+    ["Type", document.type || "–"],
+    ["Fichier", document.fichier || "–"],
+    ["Publié par", document.publie_par || "–"],
+    ["Date du document", typeof dDoc === "object" ? dDoc.date : dDoc],
+    ["Date d'ajout", typeof dAjout === "object" ? `${dAjout.date} ${dAjout.time}` : dAjout],
   ];
   return (
     <div>
       <dl className="divide-y divide-slate-100">
-        {row.map(([label, value]) => (
+        {rows.map(([label, value]) => (
           <div key={label} className="flex items-center justify-between py-2.5 text-sm">
             <dt className="text-slate-400">{label}</dt>
             <dd className="font-semibold text-slate-700">{value}</dd>
@@ -343,29 +303,24 @@ function ViewDetails({ paiement, onClose }) {
 /*  PAGE PRINCIPALE                                                     */
 /* ------------------------------------------------------------------ */
 
-function Paiements() {
+function Documents() {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
-  const [paiements, setPaiements] = useState([]);
+  const [documents, setDocuments] = useState([]);
   const [stats, setStats] = useState(null);
-  const [coproprietaires, setCoproprietaires] = useState([]);
+  const [residences, setResidences] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const perPage = 8;
 
-  // popup state: { mode: "add" | "edit" | "delete" | "view", paiement?: object }
   const [modal, setModal] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
 
-  const authHeaders = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-
-  const loadPaiements = () => {
+  const loadDocuments = () => {
     setLoading(true);
     fetch(API_URL, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => {
@@ -373,8 +328,8 @@ function Paiements() {
         return res.json();
       })
       .then((json) => {
-        if (Array.isArray(json?.paiements)) {
-          setPaiements(json.paiements);
+        if (Array.isArray(json?.documents)) {
+          setDocuments(json.documents);
           setStats(json.stats);
           setError(null);
         } else {
@@ -387,11 +342,11 @@ function Paiements() {
 
   useEffect(() => {
     if (!token) return;
-    loadPaiements();
-    fetch(COPRO_URL, { headers: { Authorization: `Bearer ${token}` } })
+    loadDocuments();
+    fetch(RESIDENCES_URL, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => (res.ok ? res.json() : []))
-      .then((json) => setCoproprietaires(Array.isArray(json) ? json : []))
-      .catch(() => setCoproprietaires([]));
+      .then((json) => setResidences(Array.isArray(json) ? json : []))
+      .catch(() => setResidences([]));
   }, [token]);
 
   if (!token) return <h2 className="text-center mt-10">Accès refusé 🚫</h2>;
@@ -412,42 +367,44 @@ function Paiements() {
     setFormError(null);
     setModal({ mode: "add" });
   };
-  const openEdit = async (p) => {
+
+  const openEdit = async (doc) => {
     setFormError(null);
-    setModal({ mode: "edit", paiement: null, loading: true });
+    setModal({ mode: "edit", document: null });
     try {
-      const res = await fetch(`${API_URL}/${p.id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_URL}/${doc.id}`, { headers: { Authorization: `Bearer ${token}` } });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Erreur lors du chargement du paiement");
-      setModal({ mode: "edit", paiement: json });
+      if (!res.ok) throw new Error(json.error || "Erreur lors du chargement du document");
+      setModal({ mode: "edit", document: json });
     } catch (err) {
       setModal(null);
       setError(err.message);
     }
   };
-  const openView = (p) => setModal({ mode: "view", paiement: p });
-  const openDelete = (p) => {
+
+  const openView = (doc) => setModal({ mode: "view", document: doc });
+  const openDelete = (doc) => {
     setFormError(null);
-    setModal({ mode: "delete", paiement: p });
+    setModal({ mode: "delete", document: doc });
   };
   const closeModal = () => {
     setModal(null);
     setFormError(null);
   };
 
-  const handleCreate = async (form) => {
+  const handleCreate = async (formData) => {
     setSubmitting(true);
     setFormError(null);
     try {
       const res = await fetch(API_URL, {
         method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify(form),
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Erreur lors de la création");
       closeModal();
-      loadPaiements();
+      loadDocuments();
     } catch (err) {
       setFormError(err.message);
     } finally {
@@ -455,19 +412,19 @@ function Paiements() {
     }
   };
 
-  const handleUpdate = async (form) => {
+  const handleUpdate = async (formData) => {
     setSubmitting(true);
     setFormError(null);
     try {
-      const res = await fetch(`${API_URL}/${modal.paiement.id}`, {
+      const res = await fetch(`${API_URL}/${modal.document.id}`, {
         method: "PUT",
-        headers: authHeaders,
-        body: JSON.stringify(form),
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Erreur lors de la mise à jour");
       closeModal();
-      loadPaiements();
+      loadDocuments();
     } catch (err) {
       setFormError(err.message);
     } finally {
@@ -479,14 +436,14 @@ function Paiements() {
     setSubmitting(true);
     setFormError(null);
     try {
-      const res = await fetch(`${API_URL}/${modal.paiement.id}`, {
+      const res = await fetch(`${API_URL}/${modal.document.id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Erreur lors de la suppression");
       closeModal();
-      loadPaiements();
+      loadDocuments();
     } catch (err) {
       setFormError(err.message);
     } finally {
@@ -494,22 +451,40 @@ function Paiements() {
     }
   };
 
-  const filtered = paiements.filter(
-    (p) => p.resident?.toLowerCase().includes(search.toLowerCase()) || p.appartement?.toLowerCase().includes(search.toLowerCase())
+  const handleDownload = (doc) => {
+    fetch(`${API_URL}/${doc.id}/download`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => {
+        if (!res.ok) throw new Error("Téléchargement impossible");
+        return res.blob();
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = doc.fichier || doc.titre;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      })
+      .catch((err) => setError(err.message));
+  };
+
+  const filtered = documents.filter(
+    (d) =>
+      d.titre?.toLowerCase().includes(search.toLowerCase()) ||
+      d.residence?.toLowerCase().includes(search.toLowerCase())
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paged = filtered.slice((page - 1) * perPage, page * perPage);
 
   const total = stats?.total ?? 0;
-  const payes = stats?.payes ?? 0;
-  const attente = stats?.attente ?? 0;
-  const annules = stats?.annules ?? 0;
-  const pct = (n) => (payes + attente + annules ? `${((n / (payes + attente + annules)) * 100).toFixed(1)}% du total` : "–");
+  const ceMois = stats?.ceMois ?? 0;
+  const nbResidences = stats?.residences ?? 0;
+  const nbTypes = stats?.typesDistincts ?? 0;
 
   return (
     <div className="flex h-screen bg-slate-50 font-sans text-slate-700">
-
-      {/* Sidebar */}
       <aside className="w-72 bg-gradient-to-b from-indigo-800 to-indigo-600 text-white flex flex-col shrink-0 overflow-y-auto">
         <div className="p-6 flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center">
@@ -546,9 +521,7 @@ function Paiements() {
         </div>
       </aside>
 
-      {/* Contenu */}
       <main className="flex-1 overflow-auto">
-
         <div className="flex items-center justify-between gap-4 px-8 py-4 bg-white border-b border-slate-100">
           <div className="relative w-full max-w-md">
             <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 text-sm"></i>
@@ -570,11 +543,10 @@ function Paiements() {
         </div>
 
         <div className="p-8">
-
           <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
             <div>
-              <h1 className="text-3xl font-bold text-slate-700">Paiements</h1>
-              <p className="text-slate-400 mt-1">Suivi des paiements des charges de copropriété.</p>
+              <h1 className="text-3xl font-bold text-slate-700">Documents</h1>
+              <p className="text-slate-400 mt-1">Centralisez et gérez tous les documents de la copropriété.</p>
             </div>
             <div className="flex items-center gap-3">
               <button
@@ -590,28 +562,28 @@ function Paiements() {
                 className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 transition-colors text-white text-sm font-semibold px-4 py-2.5 rounded-xl"
               >
                 <i className="fas fa-plus"></i>
-                Enregistrer un paiement
+                Nouveau document
               </button>
             </div>
           </div>
 
           {!loading && !error && (
             <div className="grid grid-cols-4 gap-5 mb-6">
-              <StatCard icon="fa-dollar-sign" bg="bg-emerald-500" label="Payés ce mois" value={total} note="Ce mois" tone="text-emerald-500" />
-              <StatCard icon="fa-credit-card" bg="bg-blue-500" label="Total payés" value={payes} note={pct(payes)} tone="text-blue-500" />
-              <StatCard icon="fa-clock" bg="bg-amber-500" label="En attente" value={attente} note={pct(attente)} tone="text-amber-500" />
-              <StatCard icon="fa-times-circle" bg="bg-rose-500" label="Annulés" value={annules} note={pct(annules)} tone="text-rose-500" />
+              <StatCard icon="fa-folder" bg="bg-indigo-500" label="Total documents" value={total} note="Toutes résidences" tone="text-slate-400" />
+              <StatCard icon="fa-calendar-plus" bg="bg-emerald-500" label="Ajoutés ce mois" value={ceMois} note="Nouveaux dépôts" tone="text-emerald-500" />
+              <StatCard icon="fa-building" bg="bg-amber-500" label="Résidences" value={nbResidences} note="Résidences concernées" tone="text-amber-500" />
+              <StatCard icon="fa-file-alt" bg="bg-sky-500" label="Types de fichiers" value={nbTypes} note="Formats différents" tone="text-sky-500" />
             </div>
           )}
 
           <div className="flex items-center gap-3 flex-wrap bg-white rounded-2xl shadow-sm border border-slate-100 p-4 mb-6">
-            <div className="relative flex-1 min-w-[200px]">
+            <div className="relative flex-1 min-w-[220px]">
               <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 text-sm"></i>
               <input
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                 type="text"
-                placeholder="Rechercher un paiement..."
+                placeholder="Rechercher un document..."
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
               />
             </div>
@@ -627,39 +599,50 @@ function Paiements() {
                   <thead>
                     <tr className="border-b border-slate-100 text-slate-400 text-left">
                       <th className="py-4 px-6 font-medium">#</th>
-                      <th className="font-medium">Date</th>
-                      <th className="font-medium">Résident</th>
-                      <th className="font-medium">Appartement</th>
-                      <th className="font-medium">Montant (MAD)</th>
-                      <th className="font-medium">Mode de paiement</th>
-                      <th className="font-medium">Statut</th>
+                      <th className="font-medium">Titre</th>
+                      <th className="font-medium">Résidence</th>
+                      <th className="font-medium">Type</th>
+                      <th className="font-medium">Publié par</th>
+                      <th className="font-medium">Date document</th>
+                      <th className="font-medium">Date d'ajout</th>
                       <th className="font-medium text-right pr-6">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {paged.map((p, i) => {
-                      const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
+                    {paged.map((doc, i) => {
+                      const dDoc = formatDate(doc.date_document);
+                      const dAjout = formatDate(doc.created_at);
                       return (
-                        <tr key={p.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors">
+                        <tr key={doc.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors">
                           <td className="py-4 px-6 text-slate-400">{(page - 1) * perPage + i + 1}</td>
-                          <td className="text-slate-500 whitespace-nowrap">{formatDate(p.date)}</td>
                           <td>
                             <div className="flex items-center gap-3">
-                              <span className={`w-9 h-9 rounded-full ${color.bg} ${color.text} flex items-center justify-center text-xs font-bold shrink-0`}>
-                                {initialsOf(p.resident)}
-                              </span>
-                              <span className="font-semibold text-slate-700 whitespace-nowrap">{p.resident || "–"}</span>
+                              <TypeIcon type={doc.type} />
+                              <p className="font-semibold text-slate-700 whitespace-nowrap">{doc.titre}</p>
                             </div>
                           </td>
-                          <td className="text-slate-500">{p.appartement || "–"}</td>
-                          <td className="text-slate-700 font-semibold">{p.montant}</td>
-                          <td className="text-slate-500">{p.mode}</td>
-                          <td><StatusBadge statut={p.statut} /></td>
+                          <td className="text-slate-500 whitespace-nowrap">{doc.residence || "–"}</td>
+                          <td className="text-slate-500">{doc.type || "–"}</td>
+                          <td className="text-slate-700">{doc.publie_par || "–"}</td>
+                          <td className="text-slate-500 whitespace-nowrap">{typeof dDoc === "object" ? dDoc.date : dDoc}</td>
+                          <td className="text-slate-500 whitespace-nowrap">
+                            <p>{typeof dAjout === "object" ? dAjout.date : dAjout}</p>
+                            {typeof dAjout === "object" && <p className="text-xs text-slate-400">{dAjout.time}</p>}
+                          </td>
                           <td className="pr-6">
                             <div className="flex items-center justify-end gap-3 text-slate-400">
-                              <button onClick={() => openView(p)} className="hover:text-indigo-500 transition-colors"><i className="fas fa-eye"></i></button>
-                              <button onClick={() => openEdit(p)} className="hover:text-indigo-500 transition-colors"><i className="fas fa-pen"></i></button>
-                              <button onClick={() => openDelete(p)} className="hover:text-rose-500 transition-colors"><i className="fas fa-trash-alt"></i></button>
+                              <button onClick={() => openView(doc)} className="hover:text-indigo-500 transition-colors" title="Voir">
+                                <i className="fas fa-eye"></i>
+                              </button>
+                              <button onClick={() => handleDownload(doc)} className="hover:text-indigo-500 transition-colors" title="Télécharger">
+                                <i className="fas fa-download"></i>
+                              </button>
+                              <button onClick={() => openEdit(doc)} className="hover:text-indigo-500 transition-colors" title="Modifier">
+                                <i className="fas fa-pen"></i>
+                              </button>
+                              <button onClick={() => openDelete(doc)} className="hover:text-rose-500 transition-colors" title="Supprimer">
+                                <i className="fas fa-trash-alt"></i>
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -677,27 +660,19 @@ function Paiements() {
               </div>
             </>
           )}
-
         </div>
       </main>
 
       {modal?.mode === "add" && (
-        <Modal title="Enregistrer un paiement" onClose={closeModal}>
-          <PaiementForm coproprietaires={coproprietaires} onCancel={closeModal} onSubmit={handleCreate} submitting={submitting} error={formError} />
+        <Modal title="Nouveau document" onClose={closeModal}>
+          <DocumentForm residences={residences} onCancel={closeModal} onSubmit={handleCreate} submitting={submitting} error={formError} />
         </Modal>
       )}
 
       {modal?.mode === "edit" && (
-        <Modal title="Modifier le paiement" onClose={closeModal}>
-          {modal.paiement ? (
-            <PaiementForm
-              initial={modal.paiement}
-              coproprietaires={coproprietaires}
-              onCancel={closeModal}
-              onSubmit={handleUpdate}
-              submitting={submitting}
-              error={formError}
-            />
+        <Modal title="Modifier le document" onClose={closeModal}>
+          {modal.document ? (
+            <DocumentForm initial={modal.document} residences={residences} onCancel={closeModal} onSubmit={handleUpdate} submitting={submitting} error={formError} />
           ) : (
             <p className="text-slate-400 text-sm">Chargement...</p>
           )}
@@ -705,18 +680,18 @@ function Paiements() {
       )}
 
       {modal?.mode === "view" && (
-        <Modal title="Détails du paiement" onClose={closeModal}>
-          <ViewDetails paiement={modal.paiement} onClose={closeModal} />
+        <Modal title="Détails du document" onClose={closeModal}>
+          <ViewDetails document={modal.document} onClose={closeModal} />
         </Modal>
       )}
 
       {modal?.mode === "delete" && (
-        <Modal title="Supprimer le paiement" onClose={closeModal}>
-          <DeleteConfirm paiement={modal.paiement} onCancel={closeModal} onConfirm={handleDelete} submitting={submitting} error={formError} />
+        <Modal title="Supprimer le document" onClose={closeModal}>
+          <DeleteConfirm document={modal.document} onCancel={closeModal} onConfirm={handleDelete} submitting={submitting} error={formError} />
         </Modal>
       )}
     </div>
   );
 }
 
-export default Paiements;
+export default Documents;

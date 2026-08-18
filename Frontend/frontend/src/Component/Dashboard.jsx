@@ -162,7 +162,7 @@ function Login1() {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    navigate("/");
+    navigate("/login");
   };
 
   const stats = data?.stats;

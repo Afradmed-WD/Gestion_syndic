@@ -375,7 +375,98 @@ router.get("/charges", async (req, res) => {
     res.status(500).json({ error: "Erreur lors du chargement des charges" });
   }
 });
-
+router.get("/charges/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const results = await query(
+      `
+      SELECT c.id, c.libelle, c.montant, c.periode, c.date_echeance, c.statut,
+             c.residence_id, c.appartement_id,
+             r.nom AS residence, a.numero AS appartement
+      FROM charges c
+      LEFT JOIN residences r ON r.id = c.residence_id
+      LEFT JOIN appartements a ON a.id = c.appartement_id
+      WHERE c.id = ?
+      `,
+      [id]
+    );
+    if (results.length === 0) return res.status(404).json({ error: "Charge introuvable" });
+    res.json(results[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors du chargement de la charge" });
+  }
+});
+ 
+// POST /charges → créer une charge
+router.post("/charges", async (req, res) => {
+  const { libelle, montant, periode, date_echeance, statut, residence_id, appartement_id } = req.body;
+ 
+  if (!libelle || !montant) {
+    return res.status(400).json({ error: "Libellé et montant requis" });
+  }
+ 
+  try {
+    const result = await query(
+      `INSERT INTO charges (libelle, montant, periode, date_echeance, statut, residence_id, appartement_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        libelle,
+        montant,
+        periode || null,
+        date_echeance || null,
+        statut || "impayee",
+        residence_id || null,
+        appartement_id || null,
+      ]
+    );
+    res.status(201).json({ id: result.insertId, message: "Charge créée" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors de la création de la charge" });
+  }
+});
+ 
+// PUT /charges/:id → modifier une charge
+router.put("/charges/:id", async (req, res) => {
+  const { id } = req.params;
+  const { libelle, montant, periode, date_echeance, statut, residence_id, appartement_id } = req.body;
+ 
+  if (!libelle || !montant) {
+    return res.status(400).json({ error: "Libellé et montant requis" });
+  }
+ 
+  try {
+    const rows = await query("SELECT id FROM charges WHERE id = ?", [id]);
+    if (rows.length === 0) return res.status(404).json({ error: "Charge introuvable" });
+ 
+    await query(
+      `UPDATE charges
+       SET libelle = ?, montant = ?, periode = ?, date_echeance = ?, statut = ?, residence_id = ?, appartement_id = ?
+       WHERE id = ?`,
+      [libelle, montant, periode || null, date_echeance || null, statut, residence_id || null, appartement_id || null, id]
+    );
+ 
+    res.json({ message: "Charge mise à jour" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors de la mise à jour de la charge" });
+  }
+});
+ 
+// DELETE /charges/:id → supprimer une charge
+router.delete("/charges/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await query("DELETE FROM charges WHERE id = ?", [id]);
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Charge introuvable" });
+    res.json({ message: "Charge supprimée" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors de la suppression de la charge" });
+  }
+});
+ 
 /* ------------------------------------------------------------------ */
 /*  PAIEMENTS                                                           */
 /* ------------------------------------------------------------------ */
@@ -554,5 +645,1011 @@ router.delete("/paiements/:id", async (req, res) => {
   }
 });
  
+ 
+router.get("/appartements/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const results = await query(
+      `
+      SELECT a.id, a.numero, a.etage, a.surface, a.nombre_pieces, a.type, a.statut,
+             a.residence_id, a.coproprietaire_id,
+             r.nom AS residence, u.nom AS proprietaire
+      FROM appartements a
+      LEFT JOIN residences r ON r.id = a.residence_id
+      LEFT JOIN coproprietaires c ON c.id = a.coproprietaire_id
+      LEFT JOIN utilisateur u ON u.id = c.utilisateur_id
+      WHERE a.id = ?
+      `,
+      [id]
+    );
+    if (results.length === 0) return res.status(404).json({ error: "Appartement introuvable" });
+    res.json(results[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors du chargement de l'appartement" });
+  }
+});
+ 
+// POST /appartements → créer un appartement
+router.post("/appartements", async (req, res) => {
+  const { numero, etage, surface, nombre_pieces, type, statut, residence_id, coproprietaire_id } = req.body;
+ 
+  if (!numero) {
+    return res.status(400).json({ error: "Le numéro d'appartement est requis" });
+  }
+ 
+  try {
+    const result = await query(
+      `INSERT INTO appartements (numero, etage, surface, nombre_pieces, type, statut, residence_id, coproprietaire_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        numero,
+        etage || null,
+        surface || null,
+        nombre_pieces || null,
+        type || null,
+        statut || "vacant",
+        residence_id || null,
+        coproprietaire_id || null,
+      ]
+    );
+    res.status(201).json({ id: result.insertId, message: "Appartement créé" });
+  } catch (err) {
+    console.error(err);
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ error: "Ce numéro d'appartement existe déjà" });
+    }
+    res.status(500).json({ error: "Erreur lors de la création de l'appartement" });
+  }
+});
+ 
+// PUT /appartements/:id → modifier un appartement
+router.put("/appartements/:id", async (req, res) => {
+  const { id } = req.params;
+  const { numero, etage, surface, nombre_pieces, type, statut, residence_id, coproprietaire_id } = req.body;
+ 
+  if (!numero) {
+    return res.status(400).json({ error: "Le numéro d'appartement est requis" });
+  }
+ 
+  try {
+    const rows = await query("SELECT id FROM appartements WHERE id = ?", [id]);
+    if (rows.length === 0) return res.status(404).json({ error: "Appartement introuvable" });
+ 
+    await query(
+      `UPDATE appartements
+       SET numero = ?, etage = ?, surface = ?, nombre_pieces = ?, type = ?, statut = ?, residence_id = ?, coproprietaire_id = ?
+       WHERE id = ?`,
+      [
+        numero,
+        etage || null,
+        surface || null,
+        nombre_pieces || null,
+        type || null,
+        statut,
+        residence_id || null,
+        coproprietaire_id || null,
+        id,
+      ]
+    );
+ 
+    res.json({ message: "Appartement mis à jour" });
+  } catch (err) {
+    console.error(err);
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ error: "Ce numéro d'appartement existe déjà" });
+    }
+    res.status(500).json({ error: "Erreur lors de la mise à jour de l'appartement" });
+  }
+});
+ 
+// DELETE /appartements/:id → supprimer un appartement
+router.delete("/appartements/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await query("DELETE FROM appartements WHERE id = ?", [id]);
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Appartement introuvable" });
+    res.json({ message: "Appartement supprimé" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors de la suppression de l'appartement" });
+  }
+});
+ router.get("/annonces", async (req, res) => {
+  try {
+    const [{ total }] = await query(`
+      SELECT COUNT(*) AS total FROM annonces
+      WHERE MONTH(date_publication) = MONTH(CURDATE()) AND YEAR(date_publication) = YEAR(CURDATE())
+    `);
+    const [{ publiees }] = await query("SELECT COUNT(*) AS publiees FROM annonces WHERE statut = 'publiee'");
+    const [{ planifiees }] = await query("SELECT COUNT(*) AS planifiees FROM annonces WHERE statut = 'planifiee'");
+    const [{ expirees }] = await query("SELECT COUNT(*) AS expirees FROM annonces WHERE statut = 'expiree'");
+ 
+    const annonces = await query(`
+      SELECT a.id, a.titre, a.contenu, a.image,
+             a.date_publication, a.date_expiration,
+             CASE a.statut
+               WHEN 'publiee' THEN 'Publiée'
+               WHEN 'planifiee' THEN 'Planifiée'
+               WHEN 'expiree' THEN 'Expirée'
+             END AS statut,
+             a.residence_id, r.nom AS residence,
+             a.admin_id, u.nom AS publie_par
+      FROM annonces a
+      LEFT JOIN residences r ON r.id = a.residence_id
+      LEFT JOIN utilisateur u ON u.id = a.admin_id
+      ORDER BY a.date_publication DESC
+    `);
+ 
+    res.json({ stats: { total, publiees, planifiees, expirees }, annonces });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors du chargement des annonces" });
+  }
+});
+ 
+// GET /annonces/:id → une seule annonce avec ses valeurs brutes
+// (utile pour préremplir le formulaire de modification)
+router.get("/annonces/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const results = await query(
+      `
+      SELECT a.id, a.titre, a.contenu, a.image, a.statut,
+             a.date_publication, a.date_expiration,
+             a.residence_id, r.nom AS residence,
+             a.admin_id, u.nom AS publie_par
+      FROM annonces a
+      LEFT JOIN residences r ON r.id = a.residence_id
+      LEFT JOIN utilisateur u ON u.id = a.admin_id
+      WHERE a.id = ?
+      `,
+      [id]
+    );
+    if (results.length === 0) return res.status(404).json({ error: "Annonce introuvable" });
+    res.json(results[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors du chargement de l'annonce" });
+  }
+});
+ 
+// POST /annonces → créer une annonce
+router.post("/annonces", async (req, res) => {
+  const { titre, contenu, image, date_publication, date_expiration, statut, residence_id, admin_id } = req.body;
+ 
+  if (!titre) {
+    return res.status(400).json({ error: "Le titre est requis" });
+  }
+ 
+  try {
+    const result = await query(
+      `INSERT INTO annonces (admin_id, residence_id, titre, contenu, image, date_publication, date_expiration, statut)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        admin_id || req.user?.id || null, // adapte selon comment tu identifies l'admin connecté (ex: depuis le token)
+        residence_id || null,
+        titre,
+        contenu || null,
+        image || null,
+        date_publication || new Date(),
+        date_expiration || null,
+        statut || "planifiee",
+      ]
+    );
+    res.status(201).json({ id: result.insertId, message: "Annonce créée" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors de la création de l'annonce" });
+  }
+});
+ 
+// PUT /annonces/:id → modifier une annonce
+router.put("/annonces/:id", async (req, res) => {
+  const { id } = req.params;
+  const { titre, contenu, image, date_publication, date_expiration, statut, residence_id, admin_id } = req.body;
+ 
+  if (!titre) {
+    return res.status(400).json({ error: "Le titre est requis" });
+  }
+ 
+  try {
+    const rows = await query("SELECT id FROM annonces WHERE id = ?", [id]);
+    if (rows.length === 0) return res.status(404).json({ error: "Annonce introuvable" });
+ 
+    await query(
+      `UPDATE annonces
+       SET titre = ?, contenu = ?, image = ?, date_publication = ?, date_expiration = ?, statut = ?, residence_id = ?, admin_id = ?
+       WHERE id = ?`,
+      [
+        titre,
+        contenu || null,
+        image || null,
+        date_publication || null,
+        date_expiration || null,
+        statut,
+        residence_id || null,
+        admin_id || null,
+        id,
+      ]
+    );
+ 
+    res.json({ message: "Annonce mise à jour" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors de la mise à jour de l'annonce" });
+  }
+});
+ 
+// DELETE /annonces/:id → supprimer une annonce
+router.delete("/annonces/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await query("DELETE FROM annonces WHERE id = ?", [id]);
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Annonce introuvable" });
+    res.json({ message: "Annonce supprimée" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors de la suppression de l'annonce" });
+  }
+});
+ /* ================================================================ */
+/* FACTURES — CRUD COMPLET                                          */
+/* ================================================================ */
 
+
+/* ---------------------------------------------------------------- */
+/* GET /factures                                                    */
+/* Stats + liste                                                    */
+/* ---------------------------------------------------------------- */
+
+router.get("/factures", async (req, res) => {
+
+  try {
+
+    /* ---------------------- Total factures ---------------------- */
+
+    const [{ total }] = await query(`
+      SELECT COUNT(*) AS total
+      FROM factures
+      WHERE MONTH(date_emission) = MONTH(CURDATE())
+        AND YEAR(date_emission) = YEAR(CURDATE())
+    `);
+
+
+    /* ---------------------- Montant total ----------------------- */
+
+    const [{ montantTotal }] = await query(`
+      SELECT COALESCE(SUM(montant), 0) AS montantTotal
+      FROM factures
+      WHERE MONTH(date_emission) = MONTH(CURDATE())
+        AND YEAR(date_emission) = YEAR(CURDATE())
+    `);
+
+
+    /* ---------------------- Payées ------------------------------ */
+
+    const [{ payees }] = await query(`
+      SELECT COUNT(*) AS payees
+      FROM factures
+      WHERE statut = 'payee'
+        AND MONTH(date_emission) = MONTH(CURDATE())
+        AND YEAR(date_emission) = YEAR(CURDATE())
+    `);
+
+
+    /* ---------------------- Impayées ---------------------------- */
+
+    const [{ impayees }] = await query(`
+      SELECT COUNT(*) AS impayees
+      FROM factures
+      WHERE statut = 'impayee'
+        AND MONTH(date_emission) = MONTH(CURDATE())
+        AND YEAR(date_emission) = YEAR(CURDATE())
+    `);
+
+
+    /* ---------------------- Liste ------------------------------- */
+
+    const factures = await query(`
+      SELECT
+
+        f.id,
+        f.numero,
+
+        f.coproprietaire_id,
+        f.appartement_id,
+        f.residence_id,
+
+        f.date_emission,
+        f.date_echeance,
+
+        f.montant,
+        f.statut,
+        f.description,
+
+        f.created_at,
+        f.updated_at,
+
+        u.nom AS resident,
+
+        a.numero AS appartement,
+
+        r.nom AS residence
+
+      FROM factures f
+
+      LEFT JOIN coproprietaires c
+        ON c.id = f.coproprietaire_id
+
+      LEFT JOIN utilisateur u
+        ON u.id = c.utilisateur_id
+
+      LEFT JOIN appartements a
+        ON a.id = f.appartement_id
+
+      LEFT JOIN residences r
+        ON r.id = f.residence_id
+
+      ORDER BY
+        f.date_emission DESC,
+        f.id DESC
+    `);
+
+
+    res.json({
+
+      stats: {
+        total: Number(total),
+        montantTotal: Number(montantTotal),
+        payees: Number(payees),
+        impayees: Number(impayees)
+      },
+
+      factures
+
+    });
+
+  } catch (err) {
+
+    console.error(
+      "GET /factures ERROR :",
+      err
+    );
+
+    res.status(500).json({
+      error:
+        "Erreur lors du chargement des factures"
+    });
+
+  }
+
+});
+
+
+/* ---------------------------------------------------------------- */
+/* GET /factures/form-data                                          */
+/* Données nécessaires au formulaire                                */
+/* ---------------------------------------------------------------- */
+
+router.get("/factures/form-data", async (req, res) => {
+
+  try {
+
+    const coproprietaires = await query(`
+      SELECT
+        c.id,
+        c.residence_id,
+        u.nom
+      FROM coproprietaires c
+      JOIN utilisateur u
+        ON u.id = c.utilisateur_id
+      ORDER BY u.nom ASC
+    `);
+
+
+    const appartements = await query(`
+      SELECT
+        a.id,
+        a.numero,
+        a.residence_id,
+        a.coproprietaire_id,
+        r.nom AS residence
+
+      FROM appartements a
+
+      LEFT JOIN residences r
+        ON r.id = a.residence_id
+
+      ORDER BY a.numero ASC
+    `);
+
+
+    const residences = await query(`
+      SELECT
+        id,
+        nom
+      FROM residences
+      ORDER BY nom ASC
+    `);
+
+
+    res.json({
+      coproprietaires,
+      appartements,
+      residences
+    });
+
+  } catch (err) {
+
+    console.error(
+      "GET /factures/form-data ERROR :",
+      err
+    );
+
+    res.status(500).json({
+      error:
+        "Erreur lors du chargement des données du formulaire"
+    });
+
+  }
+
+});
+
+
+/* ---------------------------------------------------------------- */
+/* GET /factures/:id                                                 */
+/* ---------------------------------------------------------------- */
+
+router.get("/factures/:id", async (req, res) => {
+
+  const id = Number(req.params.id);
+
+
+  if (
+    !Number.isInteger(id) ||
+    id <= 0
+  ) {
+
+    return res.status(400).json({
+      error: "ID de facture invalide"
+    });
+
+  }
+
+
+  try {
+
+    const rows = await query(
+      `
+      SELECT
+
+        f.id,
+        f.numero,
+
+        f.coproprietaire_id,
+        f.appartement_id,
+        f.residence_id,
+
+        f.date_emission,
+        f.date_echeance,
+
+        f.montant,
+        f.statut,
+        f.description,
+
+        u.nom AS resident,
+
+        a.numero AS appartement,
+
+        r.nom AS residence
+
+      FROM factures f
+
+      LEFT JOIN coproprietaires c
+        ON c.id = f.coproprietaire_id
+
+      LEFT JOIN utilisateur u
+        ON u.id = c.utilisateur_id
+
+      LEFT JOIN appartements a
+        ON a.id = f.appartement_id
+
+      LEFT JOIN residences r
+        ON r.id = f.residence_id
+
+      WHERE f.id = ?
+
+      LIMIT 1
+      `,
+      [id]
+    );
+
+
+    if (!rows.length) {
+
+      return res.status(404).json({
+        error:
+          "Facture introuvable"
+      });
+
+    }
+
+
+    res.json(rows[0]);
+
+  } catch (err) {
+
+    console.error(
+      "GET /factures/:id ERROR :",
+      err
+    );
+
+    res.status(500).json({
+      error:
+        "Erreur lors du chargement de la facture"
+    });
+
+  }
+
+});
+
+
+/* ---------------------------------------------------------------- */
+/* POST /factures                                                    */
+/* ---------------------------------------------------------------- */
+
+router.post("/factures", async (req, res) => {
+
+  const {
+
+    numero,
+
+    coproprietaire_id,
+    appartement_id,
+    residence_id,
+
+    date_emission,
+    date_echeance,
+
+    montant,
+    statut,
+
+    description
+
+  } = req.body;
+
+
+  /* ---------------------- Vérifications ------------------------- */
+
+  if (
+    !coproprietaire_id ||
+    !montant ||
+    !date_emission
+  ) {
+
+    return res.status(400).json({
+      error:
+        "Résident, montant et date d'émission requis"
+    });
+
+  }
+
+
+  const montantNumber =
+    Number(montant);
+
+
+  if (
+    !Number.isFinite(montantNumber) ||
+    montantNumber <= 0
+  ) {
+
+    return res.status(400).json({
+      error:
+        "Le montant doit être supérieur à 0"
+    });
+
+  }
+
+
+  const statutsAutorises = [
+    "payee",
+    "en_attente",
+    "impayee"
+  ];
+
+
+  if (
+    statut &&
+    !statutsAutorises.includes(statut)
+  ) {
+
+    return res.status(400).json({
+      error:
+        "Statut de facture invalide"
+    });
+
+  }
+
+
+  try {
+
+    /* ------------------------------------------------------------ */
+    /* Numéro automatique si aucun numéro n'est fourni              */
+    /* ------------------------------------------------------------ */
+
+    let numeroFacture =
+      numero?.trim();
+
+
+    if (!numeroFacture) {
+
+      const [{ prochainNumero }] =
+        await query(`
+          SELECT
+            COALESCE(MAX(id), 0) + 1
+            AS prochainNumero
+          FROM factures
+        `);
+
+
+      numeroFacture =
+        `FAC-${new Date().getFullYear()}-${String(
+          prochainNumero
+        ).padStart(3, "0")}`;
+
+    }
+
+
+    const result = await query(
+      `
+      INSERT INTO factures
+      (
+        numero,
+
+        coproprietaire_id,
+        appartement_id,
+        residence_id,
+
+        date_emission,
+        date_echeance,
+
+        montant,
+        statut,
+
+        description
+      )
+
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+
+        numeroFacture,
+
+        coproprietaire_id,
+
+        appartement_id || null,
+
+        residence_id || null,
+
+        date_emission,
+
+        date_echeance || null,
+
+        montantNumber,
+
+        statut || "en_attente",
+
+        description?.trim() || null
+
+      ]
+    );
+
+
+    res.status(201).json({
+
+      id:
+        result.insertId,
+
+      numero:
+        numeroFacture,
+
+      message:
+        "Facture créée avec succès"
+
+    });
+
+  } catch (err) {
+
+    console.error(
+      "POST /factures ERROR :",
+      err
+    );
+
+
+    if (
+      err.code ===
+      "ER_DUP_ENTRY"
+    ) {
+
+      return res.status(409).json({
+        error:
+          "Ce numéro de facture existe déjà"
+      });
+
+    }
+
+
+    if (
+      err.code ===
+      "ER_NO_REFERENCED_ROW_2"
+    ) {
+
+      return res.status(400).json({
+        error:
+          "Résident, appartement ou résidence invalide"
+      });
+
+    }
+
+
+    res.status(500).json({
+      error:
+        "Erreur lors de la création de la facture"
+    });
+
+  }
+
+});
+
+
+/* ---------------------------------------------------------------- */
+/* PUT /factures/:id                                                 */
+/* ---------------------------------------------------------------- */
+
+router.put("/factures/:id", async (req, res) => {
+
+  const id =
+    Number(req.params.id);
+
+
+  const {
+
+    numero,
+
+    coproprietaire_id,
+    appartement_id,
+    residence_id,
+
+    date_emission,
+    date_echeance,
+
+    montant,
+    statut,
+
+    description
+
+  } = req.body;
+
+
+  if (
+    !Number.isInteger(id) ||
+    id <= 0
+  ) {
+
+    return res.status(400).json({
+      error:
+        "ID de facture invalide"
+    });
+
+  }
+
+
+  if (
+    !numero ||
+    !coproprietaire_id ||
+    !montant ||
+    !date_emission
+  ) {
+
+    return res.status(400).json({
+      error:
+        "Numéro, résident, montant et date requis"
+    });
+
+  }
+
+
+  const montantNumber =
+    Number(montant);
+
+
+  if (
+    !Number.isFinite(montantNumber) ||
+    montantNumber <= 0
+  ) {
+
+    return res.status(400).json({
+      error:
+        "Montant invalide"
+    });
+
+  }
+
+
+  try {
+
+    const rows = await query(
+      `
+      SELECT id
+      FROM factures
+      WHERE id = ?
+      `,
+      [id]
+    );
+
+
+    if (!rows.length) {
+
+      return res.status(404).json({
+        error:
+          "Facture introuvable"
+      });
+
+    }
+
+
+    await query(
+      `
+      UPDATE factures
+
+      SET
+
+        numero = ?,
+
+        coproprietaire_id = ?,
+        appartement_id = ?,
+        residence_id = ?,
+
+        date_emission = ?,
+        date_echeance = ?,
+
+        montant = ?,
+        statut = ?,
+
+        description = ?
+
+      WHERE id = ?
+      `,
+      [
+
+        numero.trim(),
+
+        coproprietaire_id,
+
+        appartement_id || null,
+
+        residence_id || null,
+
+        date_emission,
+
+        date_echeance || null,
+
+        montantNumber,
+
+        statut || "en_attente",
+
+        description?.trim() || null,
+
+        id
+
+      ]
+    );
+
+
+    res.json({
+      message:
+        "Facture mise à jour avec succès"
+    });
+
+  } catch (err) {
+
+    console.error(
+      "PUT /factures/:id ERROR :",
+      err
+    );
+
+
+    if (
+      err.code ===
+      "ER_DUP_ENTRY"
+    ) {
+
+      return res.status(409).json({
+        error:
+          "Ce numéro de facture existe déjà"
+      });
+
+    }
+
+
+    res.status(500).json({
+      error:
+        "Erreur lors de la mise à jour de la facture"
+    });
+
+  }
+
+});
+
+
+/* ---------------------------------------------------------------- */
+/* DELETE /factures/:id                                              */
+/* ---------------------------------------------------------------- */
+
+router.delete("/factures/:id", async (req, res) => {
+
+  const id =
+    Number(req.params.id);
+
+
+  if (
+    !Number.isInteger(id) ||
+    id <= 0
+  ) {
+
+    return res.status(400).json({
+      error:
+        "ID invalide"
+    });
+
+  }
+
+
+  try {
+
+    const result =
+      await query(
+        `
+        DELETE FROM factures
+        WHERE id = ?
+        `,
+        [id]
+      );
+
+
+    if (
+      result.affectedRows === 0
+    ) {
+
+      return res.status(404).json({
+        error:
+          "Facture introuvable"
+      });
+
+    }
+
+
+    res.json({
+      message:
+        "Facture supprimée avec succès"
+    });
+
+  } catch (err) {
+
+    console.error(
+      "DELETE /factures/:id ERROR :",
+      err
+    );
+
+
+    res.status(500).json({
+      error:
+        "Erreur lors de la suppression de la facture"
+    });
+
+  }
+
+});
 module.exports = router;

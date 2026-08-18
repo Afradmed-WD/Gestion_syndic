@@ -5,6 +5,8 @@ import logo from "../Images/logo.png";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 
 const API_URL = "http://localhost:3000/reclamations";
+const COPRO_URL = "http://localhost:3000/coproprietaires";
+const APPART_URL = "http://localhost:3000/appartements";
 
 const STATUS_STYLES = {
   "En attente": "bg-sky-50 text-sky-600",
@@ -19,6 +21,20 @@ const PRIORITY_DOT = {
   "Haute": "bg-rose-500",
   "Urgente": "bg-rose-700",
 };
+
+// Traduction FR (affiché) <-> valeurs enum réelles envoyées au backend
+const STATUT_OPTIONS = [
+  { value: "en_attente", label: "En attente" },
+  { value: "en_cours", label: "En cours" },
+  { value: "resolue", label: "Résolue" },
+  { value: "rejetee", label: "Rejetée" },
+];
+const PRIORITE_OPTIONS = [
+  { value: "basse", label: "Basse" },
+  { value: "normale", label: "Moyenne" },
+  { value: "haute", label: "Haute" },
+  { value: "urgente", label: "Urgente" },
+];
 
 const AVATAR_COLORS = [
   { bg: "bg-indigo-100", text: "text-indigo-600" },
@@ -36,6 +52,35 @@ function initialsOf(nom) {
 function formatDate(d) {
   if (!d) return "–";
   return new Date(d).toLocaleDateString("fr-FR");
+}
+
+// Échappe une valeur pour l'export CSV
+function csvEscape(value) {
+  const str = value === null || value === undefined ? "" : String(value);
+  if (str.includes(";") || str.includes('"') || str.includes("\n")) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+function exportToCSV(rows) {
+  const headers = ["Titre", "Résident", "Appartement", "Catégorie", "Priorité", "Statut", "Date"];
+  const lines = [
+    headers.join(";"),
+    ...rows.map((r) =>
+      [r.titre, r.resident, r.appartement, r.categorie, r.priorite, r.statut, formatDate(r.date)].map(csvEscape).join(";")
+    ),
+  ];
+  // BOM pour un affichage correct des accents dans Excel
+  const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", `reclamations_${new Date().toISOString().slice(0, 10)}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 const NAV_GESTION = [
@@ -134,19 +179,215 @@ function Pagination({ page, totalPages, onChange }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  MODALS                                                              */
+/* ------------------------------------------------------------------ */
+
+function Modal({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h3 className="text-lg font-bold text-slate-700">{title}</h3>
+          <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400">
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+        <div className="p-6">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function ReclamationForm({ initial, coproprietaires, appartements, onCancel, onSubmit, submitting, error }) {
+  const [form, setForm] = useState({
+    titre: initial?.titre || "",
+    categorie: initial?.categorie || "",
+    priorite: initial?.priorite || "normale",
+    statut: initial?.statut || "en_attente",
+    coproprietaire_id: initial?.coproprietaire_id || "",
+    appartement_id: initial?.appartement_id || "",
+  });
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((f) => ({ ...f, [name]: value }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit(form);
+  };
+
+  const inputClass =
+    "w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200";
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {error && <p className="text-sm text-rose-500 bg-rose-50 rounded-lg px-3 py-2">{error}</p>}
+
+      <div>
+        <label className="block text-xs font-semibold text-slate-500 mb-1">Titre *</label>
+        <input type="text" name="titre" value={form.titre} onChange={handleChange} required className={inputClass} />
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-slate-500 mb-1">Catégorie</label>
+        <input
+          type="text"
+          name="categorie"
+          placeholder="Plomberie, Électricité, Bruit..."
+          value={form.categorie}
+          onChange={handleChange}
+          className={inputClass}
+        />
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-slate-500 mb-1">Résident</label>
+        <select name="coproprietaire_id" value={form.coproprietaire_id} onChange={handleChange} className={inputClass}>
+          <option value="">-- Sélectionner --</option>
+          {coproprietaires.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nom}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-slate-500 mb-1">Appartement</label>
+        <select name="appartement_id" value={form.appartement_id} onChange={handleChange} className={inputClass}>
+          <option value="">-- Sélectionner --</option>
+          {appartements.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.numero}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 mb-1">Priorité</label>
+          <select name="priorite" value={form.priorite} onChange={handleChange} className={inputClass}>
+            {PRIORITE_OPTIONS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 mb-1">Statut</label>
+          <select name="statut" value={form.statut} onChange={handleChange} className={inputClass}>
+            {STATUT_OPTIONS.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-3 pt-2">
+        <button type="button" onClick={onCancel} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-slate-50">
+          Annuler
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60"
+        >
+          {submitting ? "Enregistrement..." : "Enregistrer"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function DeleteConfirm({ reclamation, onCancel, onConfirm, submitting, error }) {
+  return (
+    <div>
+      {error && <p className="text-sm text-rose-500 bg-rose-50 rounded-lg px-3 py-2 mb-4">{error}</p>}
+      <p className="text-sm text-slate-600">
+        Voulez-vous vraiment supprimer la réclamation <span className="font-semibold">{reclamation.titre}</span> ? Cette action est
+        irréversible.
+      </p>
+      <div className="flex items-center justify-end gap-3 pt-6">
+        <button onClick={onCancel} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-slate-50">
+          Annuler
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={submitting}
+          className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-rose-500 hover:bg-rose-600 disabled:opacity-60"
+        >
+          {submitting ? "Suppression..." : "Supprimer"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ViewDetails({ reclamation, onClose }) {
+  const rows = [
+    ["Titre", reclamation.titre],
+    ["Résident", reclamation.resident || "–"],
+    ["Appartement", reclamation.appartement || "–"],
+    ["Catégorie", reclamation.categorie || "–"],
+    ["Priorité", reclamation.priorite],
+    ["Statut", reclamation.statut],
+    ["Date", formatDate(reclamation.date)],
+  ];
+  return (
+    <div>
+      <dl className="divide-y divide-slate-100">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex items-center justify-between py-2.5 text-sm">
+            <dt className="text-slate-400">{label}</dt>
+            <dd className="font-semibold text-slate-700">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="flex justify-end pt-6">
+        <button onClick={onClose} className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700">
+          Fermer
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  PAGE PRINCIPALE                                                     */
+/* ------------------------------------------------------------------ */
+
 function Reclamations() {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
   const [reclamations, setReclamations] = useState([]);
   const [stats, setStats] = useState(null);
+  const [coproprietaires, setCoproprietaires] = useState([]);
+  const [appartements, setAppartements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const perPage = 8;
 
-  useEffect(() => {
-    if (!token) return;
+  // popup state: { mode: "add" | "edit" | "delete" | "view", reclamation?: object }
+  const [modal, setModal] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState(null);
+
+  const authHeaders = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+
+  const loadReclamations = () => {
+    setLoading(true);
     fetch(API_URL, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => {
         if (!res.ok) throw new Error("Erreur réseau");
@@ -156,12 +397,26 @@ function Reclamations() {
         if (Array.isArray(json?.reclamations)) {
           setReclamations(json.reclamations);
           setStats(json.stats);
+          setError(null);
         } else {
           setError(json?.error || "Réponse API invalide");
         }
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (!token) return;
+    loadReclamations();
+    fetch(COPRO_URL, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((json) => setCoproprietaires(Array.isArray(json) ? json : []))
+      .catch(() => setCoproprietaires([]));
+    fetch(APPART_URL, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : { appartements: [] }))
+      .then((json) => setAppartements(Array.isArray(json?.appartements) ? json.appartements : []))
+      .catch(() => setAppartements([]));
   }, [token]);
 
   if (!token) return <h2 className="text-center mt-10">Accès refusé 🚫</h2>;
@@ -175,7 +430,95 @@ function Reclamations() {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    navigate("/");
+    navigate("/login");
+  };
+
+  const openAdd = () => {
+    setFormError(null);
+    setModal({ mode: "add" });
+  };
+
+  const openEdit = async (r) => {
+    setFormError(null);
+    setModal({ mode: "edit", reclamation: null });
+    try {
+      const res = await fetch(`${API_URL}/${r.id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Erreur lors du chargement de la réclamation");
+      setModal({ mode: "edit", reclamation: json });
+    } catch (err) {
+      setModal(null);
+      setError(err.message);
+    }
+  };
+
+  const openView = (r) => setModal({ mode: "view", reclamation: r });
+  const openDelete = (r) => {
+    setFormError(null);
+    setModal({ mode: "delete", reclamation: r });
+  };
+  const closeModal = () => {
+    setModal(null);
+    setFormError(null);
+  };
+
+  const handleCreate = async (form) => {
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify(form),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Erreur lors de la création");
+      closeModal();
+      loadReclamations();
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUpdate = async (form) => {
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const res = await fetch(`${API_URL}/${modal.reclamation.id}`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify(form),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Erreur lors de la mise à jour");
+      closeModal();
+      loadReclamations();
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const res = await fetch(`${API_URL}/${modal.reclamation.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Erreur lors de la suppression");
+      closeModal();
+      loadReclamations();
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const filtered = reclamations.filter(
@@ -261,11 +604,18 @@ function Reclamations() {
               <p className="text-slate-400 mt-1">Suivi et gestion des réclamations des résidents.</p>
             </div>
             <div className="flex items-center gap-3">
-              <button className="flex items-center gap-2 border border-slate-200 bg-white text-slate-600 text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-colors">
+              <button
+                onClick={() => exportToCSV(filtered)}
+                disabled={!filtered.length}
+                className="flex items-center gap-2 border border-slate-200 bg-white text-slate-600 text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
                 <i className="fas fa-file-export"></i>
                 Exporter
               </button>
-              <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 transition-colors text-white text-sm font-semibold px-4 py-2.5 rounded-xl">
+              <button
+                onClick={openAdd}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 transition-colors text-white text-sm font-semibold px-4 py-2.5 rounded-xl"
+              >
                 <i className="fas fa-plus"></i>
                 Nouvelle réclamation
               </button>
@@ -340,9 +690,9 @@ function Reclamations() {
                           <td className="text-slate-500 whitespace-nowrap">{formatDate(r.date)}</td>
                           <td className="pr-6">
                             <div className="flex items-center justify-end gap-3 text-slate-400">
-                              <button className="hover:text-indigo-500 transition-colors"><i className="fas fa-eye"></i></button>
-                              <button className="hover:text-indigo-500 transition-colors"><i className="fas fa-pen"></i></button>
-                              <button className="hover:text-rose-500 transition-colors"><i className="fas fa-trash-alt"></i></button>
+                              <button onClick={() => openView(r)} className="hover:text-indigo-500 transition-colors"><i className="fas fa-eye"></i></button>
+                              <button onClick={() => openEdit(r)} className="hover:text-indigo-500 transition-colors"><i className="fas fa-pen"></i></button>
+                              <button onClick={() => openDelete(r)} className="hover:text-rose-500 transition-colors"><i className="fas fa-trash-alt"></i></button>
                             </div>
                           </td>
                         </tr>
@@ -363,6 +713,49 @@ function Reclamations() {
 
         </div>
       </main>
+
+      {modal?.mode === "add" && (
+        <Modal title="Nouvelle réclamation" onClose={closeModal}>
+          <ReclamationForm
+            coproprietaires={coproprietaires}
+            appartements={appartements}
+            onCancel={closeModal}
+            onSubmit={handleCreate}
+            submitting={submitting}
+            error={formError}
+          />
+        </Modal>
+      )}
+
+      {modal?.mode === "edit" && (
+        <Modal title="Modifier la réclamation" onClose={closeModal}>
+          {modal.reclamation ? (
+            <ReclamationForm
+              initial={modal.reclamation}
+              coproprietaires={coproprietaires}
+              appartements={appartements}
+              onCancel={closeModal}
+              onSubmit={handleUpdate}
+              submitting={submitting}
+              error={formError}
+            />
+          ) : (
+            <p className="text-slate-400 text-sm">Chargement...</p>
+          )}
+        </Modal>
+      )}
+
+      {modal?.mode === "view" && (
+        <Modal title="Détails de la réclamation" onClose={closeModal}>
+          <ViewDetails reclamation={modal.reclamation} onClose={closeModal} />
+        </Modal>
+      )}
+
+      {modal?.mode === "delete" && (
+        <Modal title="Supprimer la réclamation" onClose={closeModal}>
+          <DeleteConfirm reclamation={modal.reclamation} onCancel={closeModal} onConfirm={handleDelete} submitting={submitting} error={formError} />
+        </Modal>
+      )}
     </div>
   );
 }

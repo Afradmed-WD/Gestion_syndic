@@ -1,75 +1,169 @@
 import axios from "axios";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import logo from "../Images/logo.png";
+import "@fortawesome/fontawesome-free/css/all.min.css";
 
 function Login1() {
   const [email, setEmail] = useState("");
   const [passwd, setPasswd] = useState("");
-  const [nom, setnom] = useState("");
+  const [showPasswd, setShowPasswd] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const navigate = useNavigate();
 
-  const handleLogin = async () => {
-  try {
-    const res = await axios.post("http://localhost:3000/login", { email, passwd });
-    localStorage.setItem("token", res.data.token);
-    navigate("/");
-  } catch (err) {
-    alert("Erreur de connexion");
-  }
-};
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+    try {
+      const res = await axios.post("http://localhost:3000/login", { email, passwd });
+      localStorage.setItem("token", res.data.token);
+      navigate("/");
+    } catch (err) {
+      setError(err.response?.data?.error || "Email ou mot de passe incorrect");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-200">
-      <div className="bg-white w-full max-w-md p-8 rounded-2xl shadow-2xl">
-        <h2 className="text-3xl font-bold text-center text-gray-800 mb-8">
-          Connexion
-        </h2>
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+      <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl overflow-hidden grid md:grid-cols-2">
+        {/* Panneau de marque */}
+        <div className="hidden md:flex flex-col justify-between bg-gradient-to-b from-indigo-800 to-indigo-600 text-white p-10">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center">
+              <img src={logo} className="h-6" alt="" />
+            </div>
+            <div>
+              <p className="font-extrabold leading-tight text-lg">SyndicPro</p>
+              <p className="text-[11px] text-indigo-200 leading-tight">Gestion de copropriété</p>
+            </div>
+          </div>
 
-        {/* Email */}
-        <div className="mb-5">
-          <label className="block mb-2 text-gray-700 font-medium">
-            Email
-          </label>
-          <input
-            type="email"
-            placeholder="Entrer votre email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          <div>
+            <h2 className="text-2xl font-bold leading-snug mb-3">
+              Toute votre copropriété, <br /> centralisée en un seul endroit.
+            </h2>
+            <p className="text-indigo-200 text-sm leading-relaxed">
+              Copropriétaires, charges, paiements, réclamations et documents : gérez tout simplement depuis un
+              tableau de bord unique.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {[
+              { icon: "fa-users", label: "Suivi des copropriétaires" },
+              { icon: "fa-file-invoice", label: "Charges & paiements en temps réel" },
+              { icon: "fa-file-alt", label: "Documents centralisés" },
+            ].map((f) => (
+              <div key={f.label} className="flex items-center gap-3 text-sm text-indigo-100">
+                <span className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
+                  <i className={`fas ${f.icon}`}></i>
+                </span>
+                {f.label}
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Mot de passe */}
-        <div className="mb-6">
-          <label className="block mb-2 text-gray-700 font-medium">
-            Mot de passe
-          </label>
-          <input
-            type="password"
-            placeholder="Entrer votre mot de passe"
-            value={passwd}
-            onChange={(e) => setPasswd(e.target.value)}
-            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+        {/* Formulaire */}
+        <div className="p-8 sm:p-10 flex flex-col justify-center">
+          <div className="md:hidden flex items-center gap-3 mb-8">
+            <div className="w-11 h-11 rounded-xl bg-indigo-600 flex items-center justify-center">
+              <img src={logo} className="h-6" alt="" />
+            </div>
+            <div>
+              <p className="font-extrabold leading-tight text-slate-700">SyndicPro</p>
+              <p className="text-[11px] text-slate-400 leading-tight">Gestion de copropriété</p>
+            </div>
+          </div>
+
+          <h2 className="text-2xl font-bold text-slate-700 mb-1">Connexion</h2>
+          <p className="text-slate-400 text-sm mb-8">Accédez à votre espace administrateur.</p>
+
+          {error && (
+            <p className="text-sm text-rose-500 bg-rose-50 rounded-xl px-4 py-3 mb-5 flex items-center gap-2">
+              <i className="fas fa-circle-exclamation"></i>
+              {error}
+            </p>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">Email</label>
+              <div className="relative">
+                <i className="fas fa-envelope absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 text-sm"></i>
+                <input
+                  type="email"
+                  placeholder="vous@syndicpro.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="w-full pl-11 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-500 mb-1.5">Mot de passe</label>
+              <div className="relative">
+                <i className="fas fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 text-sm"></i>
+                <input
+                  type={showPasswd ? "text" : "password"}
+                  placeholder="••••••••"
+                  value={passwd}
+                  onChange={(e) => setPasswd(e.target.value)}
+                  required
+                  className="w-full pl-11 pr-11 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPasswd((s) => !s)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500 text-sm"
+                >
+                  <i className={`fas ${showPasswd ? "fa-eye-slash" : "fa-eye"}`}></i>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-sm">
+              <label className="flex items-center gap-2 text-slate-500">
+                <input type="checkbox" className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-200" />
+                Se souvenir de moi
+              </label>
+              <a href="/forgot-password" className="text-indigo-600 font-semibold hover:underline">
+                Mot de passe oublié ?
+              </a>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 transition-colors text-white py-3 rounded-xl font-semibold disabled:opacity-60"
+            >
+              {loading ? (
+                <>
+                  <i className="fas fa-circle-notch fa-spin"></i>
+                  Connexion...
+                </>
+              ) : (
+                <>
+                  Se connecter
+                  <i className="fas fa-arrow-right text-sm"></i>
+                </>
+              )}
+            </button>
+          </form>
+
+          <a href="/register">
+            <p className="text-center text-slate-400 mt-8 text-sm">
+              Vous n'avez pas de compte ?{" "}
+              <span className="text-indigo-600 font-semibold hover:underline">S'inscrire</span>
+            </p>
+          </a>
         </div>
-
-        {/* Bouton */}
-        <button
-          onClick={handleLogin}
-          className="w-full bg-blue-600 text-white py-3 rounded-xl font-semibold hover:bg-blue-700 transition duration-300"
-        >
-          Se connecter
-        </button>
-
-        {/* Lien */}
-       <a href="/register">
-         <p className="text-center text-gray-500 mt-6">
-          Vous n'avez pas de compte ?{" "}
-          <span className="text-blue-600 font-semibold cursor-pointer hover:underline">
-            S'inscrire
-          </span>
-        </p>
-       </a>
       </div>
     </div>
   );

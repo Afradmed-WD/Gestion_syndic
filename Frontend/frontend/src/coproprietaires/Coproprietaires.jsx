@@ -326,7 +326,7 @@ function Coproprietaires() {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    navigate("/");
+    navigate("/login");
   };
 
   const handleDelete = async () => {

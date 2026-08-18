@@ -8,6 +8,10 @@ import Appartements from "./Appartement/Appartements";
 import Charges from "./Charges/Charges";
 import Paiements from "./Piements/Paiements";
 import Reclamations from "./Réclamations/Reclamations";
+import Documents from "./Documents/Documents";
+import Annonces from "./Annonces/Annonces";
+import Depenses from "./Depences/Depences";
+import Factures from "./Factures/Factures";
 
 
 function App() {
@@ -23,6 +27,10 @@ function App() {
           <Route path="/Charges" element={<Charges />} />
           <Route path="/Paiements" element={<Paiements />} />
           <Route path="/Réclamations" element={<Reclamations />} />
+          <Route path="/Documents" element={<Documents />} />
+          <Route path="/Annonces" element={<Annonces />} />
+          <Route path="/Dépenses" element={<Depenses />} />
+          <Route path="/Factures" element={<Factures />} />
         </Route>
       </Routes>
     </BrowserRouter>

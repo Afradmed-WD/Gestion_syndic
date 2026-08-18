@@ -5,12 +5,21 @@ import logo from "../Images/logo.png";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 
 const API_URL = "http://localhost:3000/appartements";
+const RESIDENCES_URL = "http://localhost:3000/residences";
+const COPRO_URL = "http://localhost:3000/coproprietaires";
 
 const STATUS_STYLES = {
   "Occupé": "bg-emerald-50 text-emerald-600",
   "Vacant": "bg-amber-50 text-amber-600",
   "En maintenance": "bg-rose-50 text-rose-500",
 };
+
+// Traduction FR (affiché) <-> valeurs enum réelles envoyées au backend
+const STATUT_OPTIONS = [
+  { value: "occupe", label: "Occupé" },
+  { value: "vacant", label: "Vacant" },
+  { value: "en_travaux", label: "En maintenance" },
+];
 
 const AVATAR_COLORS = [
   { bg: "bg-indigo-100", text: "text-indigo-600" },
@@ -27,6 +36,37 @@ function initialsOf(nom) {
     .map((w) => w[0])
     .join("")
     .toUpperCase();
+}
+
+// Échappe une valeur pour l'export CSV
+function csvEscape(value) {
+  const str = value === null || value === undefined ? "" : String(value);
+  if (str.includes(";") || str.includes('"') || str.includes("\n")) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+function exportToCSV(rows) {
+  const headers = ["Numéro", "Étage", "Surface (m²)", "Pièces", "Propriétaire", "Résidence", "Statut"];
+  const lines = [
+    headers.join(";"),
+    ...rows.map((a) =>
+      [a.numero, a.etage, a.surface, a.nombre_pieces, a.proprietaire, a.residence, a.statut]
+        .map(csvEscape)
+        .join(";")
+    ),
+  ];
+  // BOM pour un affichage correct des accents dans Excel
+  const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", `appartements_${new Date().toISOString().slice(0, 10)}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 const NAV_GESTION = [
@@ -116,19 +156,215 @@ function Pagination({ page, totalPages, onChange }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  MODALS                                                              */
+/* ------------------------------------------------------------------ */
+
+function Modal({ title, onClose, children }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h3 className="text-lg font-bold text-slate-700">{title}</h3>
+          <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400">
+            <i className="fas fa-times"></i>
+          </button>
+        </div>
+        <div className="p-6">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function AppartementForm({ initial, residences, coproprietaires, onCancel, onSubmit, submitting, error }) {
+  const [form, setForm] = useState({
+    numero: initial?.numero || "",
+    etage: initial?.etage ?? "",
+    surface: initial?.surface ?? "",
+    nombre_pieces: initial?.nombre_pieces ?? "",
+    type: initial?.type || "",
+    statut: initial?.statut || "vacant",
+    residence_id: initial?.residence_id || "",
+    coproprietaire_id: initial?.coproprietaire_id || "",
+  });
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((f) => ({ ...f, [name]: value }));
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSubmit(form);
+  };
+
+  const inputClass =
+    "w-full px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200";
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {error && <p className="text-sm text-rose-500 bg-rose-50 rounded-lg px-3 py-2">{error}</p>}
+
+      <div>
+        <label className="block text-xs font-semibold text-slate-500 mb-1">Numéro *</label>
+        <input type="text" name="numero" value={form.numero} onChange={handleChange} required className={inputClass} />
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 mb-1">Étage</label>
+          <input type="number" name="etage" value={form.etage} onChange={handleChange} className={inputClass} />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 mb-1">Surface (m²)</label>
+          <input type="number" step="0.01" min="0" name="surface" value={form.surface} onChange={handleChange} className={inputClass} />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 mb-1">Pièces</label>
+          <input type="number" min="0" name="nombre_pieces" value={form.nombre_pieces} onChange={handleChange} className={inputClass} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 mb-1">Type</label>
+          <input type="text" name="type" placeholder="Studio, F3, Duplex..." value={form.type} onChange={handleChange} className={inputClass} />
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-500 mb-1">Statut</label>
+          <select name="statut" value={form.statut} onChange={handleChange} className={inputClass}>
+            {STATUT_OPTIONS.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-slate-500 mb-1">Résidence</label>
+        <select name="residence_id" value={form.residence_id} onChange={handleChange} className={inputClass}>
+          <option value="">-- Aucune --</option>
+          {residences.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.nom}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-xs font-semibold text-slate-500 mb-1">Propriétaire</label>
+        <select name="coproprietaire_id" value={form.coproprietaire_id} onChange={handleChange} className={inputClass}>
+          <option value="">-- Aucun (vacant) --</option>
+          {coproprietaires.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nom}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="flex items-center justify-end gap-3 pt-2">
+        <button type="button" onClick={onCancel} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-slate-50">
+          Annuler
+        </button>
+        <button
+          type="submit"
+          disabled={submitting}
+          className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60"
+        >
+          {submitting ? "Enregistrement..." : "Enregistrer"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function DeleteConfirm({ appartement, onCancel, onConfirm, submitting, error }) {
+  return (
+    <div>
+      {error && <p className="text-sm text-rose-500 bg-rose-50 rounded-lg px-3 py-2 mb-4">{error}</p>}
+      <p className="text-sm text-slate-600">
+        Voulez-vous vraiment supprimer l'appartement <span className="font-semibold">{appartement.numero}</span> ? Cette action est
+        irréversible.
+      </p>
+      <div className="flex items-center justify-end gap-3 pt-6">
+        <button onClick={onCancel} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-slate-50">
+          Annuler
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={submitting}
+          className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-rose-500 hover:bg-rose-600 disabled:opacity-60"
+        >
+          {submitting ? "Suppression..." : "Supprimer"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ViewDetails({ appartement, onClose }) {
+  const rows = [
+    ["Numéro", appartement.numero],
+    ["Étage", appartement.etage ?? "–"],
+    ["Surface", appartement.surface ? `${appartement.surface} m²` : "–"],
+    ["Pièces", appartement.nombre_pieces ?? "–"],
+    ["Type", appartement.type || "–"],
+    ["Propriétaire", appartement.proprietaire || "–"],
+    ["Résidence", appartement.residence || "–"],
+    ["Statut", appartement.statut],
+  ];
+  return (
+    <div>
+      <dl className="divide-y divide-slate-100">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex items-center justify-between py-2.5 text-sm">
+            <dt className="text-slate-400">{label}</dt>
+            <dd className="font-semibold text-slate-700">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="flex justify-end pt-6">
+        <button onClick={onClose} className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700">
+          Fermer
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  PAGE PRINCIPALE                                                     */
+/* ------------------------------------------------------------------ */
+
 function Appartements() {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
   const [apartments, setApartments] = useState([]);
   const [stats, setStats] = useState(null);
+  const [residences, setResidences] = useState([]);
+  const [coproprietaires, setCoproprietaires] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const perPage = 8;
 
-  useEffect(() => {
-    if (!token) return;
+  // popup state: { mode: "add" | "edit" | "delete" | "view", appartement?: object }
+  const [modal, setModal] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState(null);
+
+  const authHeaders = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+
+  const loadApartments = () => {
+    setLoading(true);
     fetch(API_URL, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => {
         if (!res.ok) throw new Error("Erreur réseau");
@@ -138,12 +374,26 @@ function Appartements() {
         if (Array.isArray(json?.appartements)) {
           setApartments(json.appartements);
           setStats(json.stats);
+          setError(null);
         } else {
           setError(json?.error || "Réponse API invalide");
         }
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    if (!token) return;
+    loadApartments();
+    fetch(RESIDENCES_URL, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((json) => setResidences(Array.isArray(json) ? json : []))
+      .catch(() => setResidences([]));
+    fetch(COPRO_URL, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((json) => setCoproprietaires(Array.isArray(json) ? json : []))
+      .catch(() => setCoproprietaires([]));
   }, [token]);
 
   if (!token) return <h2 className="text-center mt-10">Accès refusé 🚫</h2>;
@@ -157,7 +407,95 @@ function Appartements() {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    navigate("/");
+    navigate("/login");
+  };
+
+  const openAdd = () => {
+    setFormError(null);
+    setModal({ mode: "add" });
+  };
+
+  const openEdit = async (a) => {
+    setFormError(null);
+    setModal({ mode: "edit", appartement: null });
+    try {
+      const res = await fetch(`${API_URL}/${a.id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Erreur lors du chargement de l'appartement");
+      setModal({ mode: "edit", appartement: json });
+    } catch (err) {
+      setModal(null);
+      setError(err.message);
+    }
+  };
+
+  const openView = (a) => setModal({ mode: "view", appartement: a });
+  const openDelete = (a) => {
+    setFormError(null);
+    setModal({ mode: "delete", appartement: a });
+  };
+  const closeModal = () => {
+    setModal(null);
+    setFormError(null);
+  };
+
+  const handleCreate = async (form) => {
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify(form),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Erreur lors de la création");
+      closeModal();
+      loadApartments();
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUpdate = async (form) => {
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const res = await fetch(`${API_URL}/${modal.appartement.id}`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify(form),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Erreur lors de la mise à jour");
+      closeModal();
+      loadApartments();
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      const res = await fetch(`${API_URL}/${modal.appartement.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Erreur lors de la suppression");
+      closeModal();
+      loadApartments();
+    } catch (err) {
+      setFormError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const filtered = apartments.filter(
@@ -245,11 +583,18 @@ function Appartements() {
               <p className="text-slate-400 mt-1">Liste de tous les appartements de la copropriété.</p>
             </div>
             <div className="flex items-center gap-3">
-              <button className="flex items-center gap-2 border border-slate-200 bg-white text-slate-600 text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-colors">
+              <button
+                onClick={() => exportToCSV(filtered)}
+                disabled={!filtered.length}
+                className="flex items-center gap-2 border border-slate-200 bg-white text-slate-600 text-sm font-semibold px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
+              >
                 <i className="fas fa-file-export"></i>
                 Exporter
               </button>
-              <button className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 transition-colors text-white text-sm font-semibold px-4 py-2.5 rounded-xl">
+              <button
+                onClick={openAdd}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 transition-colors text-white text-sm font-semibold px-4 py-2.5 rounded-xl"
+              >
                 <i className="fas fa-plus"></i>
                 Ajouter un appartement
               </button>
@@ -324,9 +669,9 @@ function Appartements() {
                           <td><StatusBadge statut={a.statut} /></td>
                           <td className="pr-6">
                             <div className="flex items-center justify-end gap-3 text-slate-400">
-                              <button className="hover:text-indigo-500 transition-colors"><i className="fas fa-eye"></i></button>
-                              <button className="hover:text-indigo-500 transition-colors"><i className="fas fa-pen"></i></button>
-                              <button className="hover:text-rose-500 transition-colors"><i className="fas fa-trash-alt"></i></button>
+                              <button onClick={() => openView(a)} className="hover:text-indigo-500 transition-colors"><i className="fas fa-eye"></i></button>
+                              <button onClick={() => openEdit(a)} className="hover:text-indigo-500 transition-colors"><i className="fas fa-pen"></i></button>
+                              <button onClick={() => openDelete(a)} className="hover:text-rose-500 transition-colors"><i className="fas fa-trash-alt"></i></button>
                             </div>
                           </td>
                         </tr>
@@ -347,6 +692,49 @@ function Appartements() {
 
         </div>
       </main>
+
+      {modal?.mode === "add" && (
+        <Modal title="Ajouter un appartement" onClose={closeModal}>
+          <AppartementForm
+            residences={residences}
+            coproprietaires={coproprietaires}
+            onCancel={closeModal}
+            onSubmit={handleCreate}
+            submitting={submitting}
+            error={formError}
+          />
+        </Modal>
+      )}
+
+      {modal?.mode === "edit" && (
+        <Modal title="Modifier l'appartement" onClose={closeModal}>
+          {modal.appartement ? (
+            <AppartementForm
+              initial={modal.appartement}
+              residences={residences}
+              coproprietaires={coproprietaires}
+              onCancel={closeModal}
+              onSubmit={handleUpdate}
+              submitting={submitting}
+              error={formError}
+            />
+          ) : (
+            <p className="text-slate-400 text-sm">Chargement...</p>
+          )}
+        </Modal>
+      )}
+
+      {modal?.mode === "view" && (
+        <Modal title="Détails de l'appartement" onClose={closeModal}>
+          <ViewDetails appartement={modal.appartement} onClose={closeModal} />
+        </Modal>
+      )}
+
+      {modal?.mode === "delete" && (
+        <Modal title="Supprimer l'appartement" onClose={closeModal}>
+          <DeleteConfirm appartement={modal.appartement} onCancel={closeModal} onConfirm={handleDelete} submitting={submitting} error={formError} />
+        </Modal>
+      )}
     </div>
   );
 }
