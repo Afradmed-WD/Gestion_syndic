@@ -362,7 +362,7 @@ function Depenses() {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    navigate("/");
+    navigate("/login");
   };
 
   const openAdd = () => {

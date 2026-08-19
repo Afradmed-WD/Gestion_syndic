@@ -12,6 +12,9 @@ import Documents from "./Documents/Documents";
 import Annonces from "./Annonces/Annonces";
 import Depenses from "./Depences/Depences";
 import Factures from "./Factures/Factures";
+import Utilisateurs from "./Utilisateurs/Utilisateurs";
+import Rapports from "./Rapports/Rapports";
+import Reglages from "./Reglages/Reglages";
 
 
 function App() {
@@ -31,6 +34,9 @@ function App() {
           <Route path="/Annonces" element={<Annonces />} />
           <Route path="/Dépenses" element={<Depenses />} />
           <Route path="/Factures" element={<Factures />} />
+          <Route path="/Utilisateurs" element={<Utilisateurs />} />
+          <Route path="/Rapports" element={<Rapports />} />
+          <Route path="/Paramètres" element={<Reglages />} />
         </Route>
       </Routes>
     </BrowserRouter>

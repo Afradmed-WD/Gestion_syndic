@@ -4,20 +4,14 @@ import { useNavigate } from "react-router-dom";
 import logo from "../Images/logo.png";
 import "@fortawesome/fontawesome-free/css/all.min.css";
 
-const API_URL = "http://localhost:3000/factures";
-const COPRO_URL = "http://localhost:3000/coproprietaires";
-const APPART_URL = "http://localhost:3000/appartements";
-const RESIDENCES_URL = "http://localhost:3000/residences";
+const API_URL = "http://localhost:3000/utilisateurs";
 
-const STATUT_STYLES = {
-  "Payée": "bg-emerald-50 text-emerald-600",
-  "En attente": "bg-amber-50 text-amber-600",
-  "Impayée": "bg-rose-50 text-rose-500",
-};
-const STATUT_OPTIONS = [
-  { value: "payee", label: "Payée" },
-  { value: "en_attente", label: "En attente" },
-  { value: "impayee", label: "Impayée" },
+const AVATAR_COLORS = [
+  { bg: "bg-indigo-100", text: "text-indigo-600" },
+  { bg: "bg-rose-100", text: "text-rose-600" },
+  { bg: "bg-amber-100", text: "text-amber-600" },
+  { bg: "bg-emerald-100", text: "text-emerald-600" },
+  { bg: "bg-sky-100", text: "text-sky-600" },
 ];
 
 function initialsOf(nom) {
@@ -25,18 +19,7 @@ function initialsOf(nom) {
   return nom.split(" ").map((w) => w[0]).join("").toUpperCase();
 }
 
-function formatDate(d) {
-  if (!d) return "–";
-  const date = new Date(d);
-  if (Number.isNaN(date.getTime())) return "–";
-  return date.toLocaleDateString("fr-FR");
-}
-
-function formatMontant(m) {
-  const n = Number(m || 0);
-  return n.toLocaleString("fr-FR", { style: "currency", currency: "MAD" });
-}
-
+// Échappe une valeur pour l'export CSV
 function csvEscape(value) {
   const str = value === null || value === undefined ? "" : String(value);
   if (str.includes(";") || str.includes('"') || str.includes("\n")) {
@@ -46,33 +29,19 @@ function csvEscape(value) {
 }
 
 function exportToCSV(rows) {
-  const headers = ["Numéro", "Résident", "Appartement", "Résidence", "Montant", "Émission", "Échéance", "Statut"];
-  const lines = [
-    headers.join(";"),
-    ...rows.map((r) =>
-      [r.numero, r.resident, r.appartement, r.residence, r.montant, formatDate(r.date_emission), formatDate(r.date_echeance), r.statut]
-        .map(csvEscape)
-        .join(";")
-    ),
-  ];
+  const headers = ["Nom", "Email"];
+  const lines = [headers.join(";"), ...rows.map((u) => [u.nom, u.email].map(csvEscape).join(";"))];
+  // BOM pour un affichage correct des accents dans Excel
   const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.setAttribute("download", `factures_${new Date().toISOString().slice(0, 10)}.csv`);
+  link.setAttribute("download", `utilisateurs_${new Date().toISOString().slice(0, 10)}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
-
-const AVATAR_COLORS = [
-  { bg: "bg-indigo-100", text: "text-indigo-600" },
-  { bg: "bg-rose-100", text: "text-rose-600" },
-  { bg: "bg-amber-100", text: "text-amber-600" },
-  { bg: "bg-emerald-100", text: "text-emerald-600" },
-  { bg: "bg-sky-100", text: "text-sky-600" },
-];
 
 const NAV_GESTION = [
   { icon: "fa-users", label: "Copropriétaires" },
@@ -84,12 +53,12 @@ const NAV_GESTION = [
   { icon: "fa-file-alt", label: "Documents" },
 ];
 const NAV_COMPTA = [
-  { icon: "fa-file-invoice", label: "Factures", active: true },
+  { icon: "fa-file-invoice", label: "Factures" },
   { icon: "fa-hand-holding-usd", label: "Dépenses" },
   { icon: "fa-chart-bar", label: "Rapports" },
 ];
 const NAV_PARAMS = [
-  { icon: "fa-user-friends", label: "Utilisateurs" },
+  { icon: "fa-user-friends", label: "Utilisateurs", active: true },
   { icon: "fa-cog", label: "Paramètres" },
 ];
 
@@ -122,17 +91,9 @@ function StatCard({ icon, bg, label, value, note, tone }) {
       <div>
         <p className="text-sm text-slate-400">{label}</p>
         <p className="text-2xl font-bold text-slate-700 leading-tight">{value}</p>
-        <p className={`text-xs font-semibold ${tone}`}>{note}</p>
+        {note && <p className={`text-xs font-semibold ${tone}`}>{note}</p>}
       </div>
     </div>
-  );
-}
-
-function StatutBadge({ statut }) {
-  return (
-    <span className={`text-xs font-semibold px-3 py-1 rounded-full whitespace-nowrap ${STATUT_STYLES[statut] || "bg-slate-100 text-slate-500"}`}>
-      {statut}
-    </span>
   );
 }
 
@@ -168,7 +129,7 @@ function Pagination({ page, totalPages, onChange }) {
 function Modal({ title, onClose, children }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h3 className="text-lg font-bold text-slate-700">{title}</h3>
           <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400">
@@ -181,20 +142,19 @@ function Modal({ title, onClose, children }) {
   );
 }
 
-function FactureForm({ initial, coproprietaires, appartements, residences, onCancel, onSubmit, submitting, error }) {
+function UtilisateurForm({ initial, onCancel, onSubmit, submitting, error }) {
+  const isEdit = Boolean(initial);
   const [form, setForm] = useState({
-    numero: initial?.numero || "",
-    coproprietaire_id: initial?.coproprietaire_id || "",
-    appartement_id: initial?.appartement_id || "",
-    residence_id: initial?.residence_id || "",
-    montant: initial?.montant || "",
-    date_emission: initial?.date_emission ? initial.date_emission.slice(0, 10) : new Date().toISOString().slice(0, 10),
-    date_echeance: initial?.date_echeance ? initial.date_echeance.slice(0, 10) : "",
-    statut: initial ? STATUT_OPTIONS.find((s) => s.label === initial.statut)?.value || "en_attente" : "en_attente",
-    description: initial?.description || "",
+    nom: initial?.nom || "",
+    email: initial?.email || "",
+    passwd: "",
   });
+  const [showPasswd, setShowPasswd] = useState(false);
 
-  const handleChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((f) => ({ ...f, [name]: value }));
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -208,71 +168,39 @@ function FactureForm({ initial, coproprietaires, appartements, residences, onCan
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && <p className="text-sm text-rose-500 bg-rose-50 rounded-lg px-3 py-2">{error}</p>}
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1">Numéro</label>
-          <input type="text" name="numero" value={form.numero} onChange={handleChange} className={inputClass} />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1">Montant (MAD) *</label>
-          <input type="number" step="0.01" min="0" name="montant" value={form.montant} onChange={handleChange} required className={inputClass} />
-        </div>
+      <div>
+        <label className="block text-xs font-semibold text-slate-500 mb-1">Nom *</label>
+        <input type="text" name="nom" value={form.nom} onChange={handleChange} required className={inputClass} />
       </div>
 
       <div>
-        <label className="block text-xs font-semibold text-slate-500 mb-1">Résident</label>
-        <select name="coproprietaire_id" value={form.coproprietaire_id} onChange={handleChange} className={inputClass}>
-          <option value="">-- Sélectionner --</option>
-          {coproprietaires.map((c) => (
-            <option key={c.id} value={c.id}>{c.nom}</option>
-          ))}
-        </select>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1">Appartement</label>
-          <select name="appartement_id" value={form.appartement_id} onChange={handleChange} className={inputClass}>
-            <option value="">-- Sélectionner --</option>
-            {appartements.map((a) => (
-              <option key={a.id} value={a.id}>{a.numero}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1">Résidence</label>
-          <select name="residence_id" value={form.residence_id} onChange={handleChange} className={inputClass}>
-            <option value="">-- Sélectionner --</option>
-            {residences.map((r) => (
-              <option key={r.id} value={r.id}>{r.nom}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1">Date d'émission</label>
-          <input type="date" name="date_emission" value={form.date_emission} onChange={handleChange} className={inputClass} />
-        </div>
-        <div>
-          <label className="block text-xs font-semibold text-slate-500 mb-1">Date d'échéance</label>
-          <input type="date" name="date_echeance" value={form.date_echeance} onChange={handleChange} className={inputClass} />
-        </div>
+        <label className="block text-xs font-semibold text-slate-500 mb-1">Email *</label>
+        <input type="email" name="email" value={form.email} onChange={handleChange} required className={inputClass} />
       </div>
 
       <div>
-        <label className="block text-xs font-semibold text-slate-500 mb-1">Statut</label>
-        <select name="statut" value={form.statut} onChange={handleChange} className={inputClass}>
-          {STATUT_OPTIONS.map((s) => (
-            <option key={s.value} value={s.value}>{s.label}</option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <label className="block text-xs font-semibold text-slate-500 mb-1">Description</label>
-        <textarea name="description" value={form.description} onChange={handleChange} rows={3} className={inputClass} />
+        <label className="block text-xs font-semibold text-slate-500 mb-1">
+          {isEdit ? "Nouveau mot de passe" : "Mot de passe *"}
+        </label>
+        <div className="relative">
+          <input
+            type={showPasswd ? "text" : "password"}
+            name="passwd"
+            value={form.passwd}
+            onChange={handleChange}
+            required={!isEdit}
+            placeholder={isEdit ? "Laisser vide pour ne pas changer" : ""}
+            className={`${inputClass} pr-10`}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPasswd((s) => !s)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            tabIndex={-1}
+          >
+            <i className={`fas ${showPasswd ? "fa-eye-slash" : "fa-eye"} text-sm`}></i>
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center justify-end gap-3 pt-2">
@@ -291,13 +219,13 @@ function FactureForm({ initial, coproprietaires, appartements, residences, onCan
   );
 }
 
-function DeleteConfirm({ facture, onCancel, onConfirm, submitting, error }) {
+function DeleteConfirm({ utilisateur, onCancel, onConfirm, submitting, error }) {
   return (
     <div>
       {error && <p className="text-sm text-rose-500 bg-rose-50 rounded-lg px-3 py-2 mb-4">{error}</p>}
       <p className="text-sm text-slate-600">
-        Voulez-vous vraiment supprimer la facture{" "}
-        <span className="font-semibold">{facture.numero || `#${facture.id}`}</span> ? Cette action est irréversible.
+        Voulez-vous vraiment supprimer l'utilisateur <span className="font-semibold">{utilisateur.nom}</span> (
+        {utilisateur.email}) ? Cette action est irréversible.
       </p>
       <div className="flex items-center justify-end gap-3 pt-6">
         <button onClick={onCancel} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-500 hover:bg-slate-50">
@@ -315,27 +243,18 @@ function DeleteConfirm({ facture, onCancel, onConfirm, submitting, error }) {
   );
 }
 
-function ViewDetails({ facture, onClose }) {
-  const rows = [
-    ["Numéro", facture.numero || "–"],
-    ["Résident", facture.resident || "–"],
-    ["Appartement", facture.appartement || "–"],
-    ["Résidence", facture.residence || "–"],
-    ["Montant", formatMontant(facture.montant)],
-    ["Date d'émission", formatDate(facture.date_emission)],
-    ["Date d'échéance", formatDate(facture.date_echeance)],
-    ["Statut", facture.statut],
-    ["Description", facture.description || "–"],
-  ];
+function ViewDetails({ utilisateur, onClose }) {
   return (
     <div>
       <dl className="divide-y divide-slate-100">
-        {rows.map(([label, value]) => (
-          <div key={label} className="flex items-center justify-between py-2.5 text-sm gap-4">
-            <dt className="text-slate-400 shrink-0">{label}</dt>
-            <dd className="font-semibold text-slate-700 text-right">{value}</dd>
-          </div>
-        ))}
+        <div className="flex items-center justify-between py-2.5 text-sm">
+          <dt className="text-slate-400">Nom</dt>
+          <dd className="font-semibold text-slate-700">{utilisateur.nom}</dd>
+        </div>
+        <div className="flex items-center justify-between py-2.5 text-sm">
+          <dt className="text-slate-400">Email</dt>
+          <dd className="font-semibold text-slate-700">{utilisateur.email}</dd>
+        </div>
       </dl>
       <div className="flex justify-end pt-6">
         <button onClick={onClose} className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700">
@@ -350,29 +269,28 @@ function ViewDetails({ facture, onClose }) {
 /*  PAGE PRINCIPALE                                                     */
 /* ------------------------------------------------------------------ */
 
-function Factures() {
+function Utilisateurs() {
   const navigate = useNavigate();
   const token = localStorage.getItem("token");
-  const [factures, setFactures] = useState([]);
+  const [utilisateurs, setUtilisateurs] = useState([]);
   const [stats, setStats] = useState(null);
-  const [coproprietaires, setCoproprietaires] = useState([]);
-  const [appartements, setAppartements] = useState([]);
-  const [residences, setResidences] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
   const [search, setSearch] = useState("");
-  const [statutFiltre, setStatutFiltre] = useState("");
   const [page, setPage] = useState(1);
   const perPage = 8;
 
+  // popup state: { mode: "add" | "edit" | "delete" | "view", utilisateur?: object }
   const [modal, setModal] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState(null);
 
-  const authHeaders = { "Content-Type": "application/json", Authorization: `Bearer ${token}` };
+  const authHeaders = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
 
-  const loadFactures = () => {
+  const loadUtilisateurs = () => {
     setLoading(true);
     fetch(API_URL, { headers: { Authorization: `Bearer ${token}` } })
       .then((res) => {
@@ -380,8 +298,8 @@ function Factures() {
         return res.json();
       })
       .then((json) => {
-        if (Array.isArray(json?.factures)) {
-          setFactures(json.factures);
+        if (Array.isArray(json?.utilisateurs)) {
+          setUtilisateurs(json.utilisateurs);
           setStats(json.stats);
           setError(null);
         } else {
@@ -394,19 +312,7 @@ function Factures() {
 
   useEffect(() => {
     if (!token) return;
-    loadFactures();
-    fetch(COPRO_URL, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((json) => setCoproprietaires(Array.isArray(json) ? json : []))
-      .catch(() => setCoproprietaires([]));
-    fetch(APPART_URL, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => (res.ok ? res.json() : { appartements: [] }))
-      .then((json) => setAppartements(Array.isArray(json?.appartements) ? json.appartements : []))
-      .catch(() => setAppartements([]));
-    fetch(RESIDENCES_URL, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((json) => setResidences(Array.isArray(json) ? json : []))
-      .catch(() => setResidences([]));
+    loadUtilisateurs();
   }, [token]);
 
   if (!token) return <h2 className="text-center mt-10">Accès refusé 🚫</h2>;
@@ -420,7 +326,7 @@ function Factures() {
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    navigate("/");
+    navigate("/login");
   };
 
   const openAdd = () => {
@@ -428,24 +334,24 @@ function Factures() {
     setModal({ mode: "add" });
   };
 
-  const openEdit = async (f) => {
+  const openEdit = async (u) => {
     setFormError(null);
-    setModal({ mode: "edit", facture: null });
+    setModal({ mode: "edit", utilisateur: null });
     try {
-      const res = await fetch(`${API_URL}/${f.id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_URL}/${u.id}`, { headers: { Authorization: `Bearer ${token}` } });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Erreur lors du chargement de la facture");
-      setModal({ mode: "edit", facture: json });
+      if (!res.ok) throw new Error(json.error || "Erreur lors du chargement de l'utilisateur");
+      setModal({ mode: "edit", utilisateur: json });
     } catch (err) {
       setModal(null);
       setError(err.message);
     }
   };
 
-  const openView = (f) => setModal({ mode: "view", facture: f });
-  const openDelete = (f) => {
+  const openView = (u) => setModal({ mode: "view", utilisateur: u });
+  const openDelete = (u) => {
     setFormError(null);
-    setModal({ mode: "delete", facture: f });
+    setModal({ mode: "delete", utilisateur: u });
   };
   const closeModal = () => {
     setModal(null);
@@ -456,11 +362,15 @@ function Factures() {
     setSubmitting(true);
     setFormError(null);
     try {
-      const res = await fetch(API_URL, { method: "POST", headers: authHeaders, body: JSON.stringify(form) });
+      const res = await fetch(API_URL, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify(form),
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Erreur lors de la création");
       closeModal();
-      loadFactures();
+      loadUtilisateurs();
     } catch (err) {
       setFormError(err.message);
     } finally {
@@ -472,11 +382,19 @@ function Factures() {
     setSubmitting(true);
     setFormError(null);
     try {
-      const res = await fetch(`${API_URL}/${modal.facture.id}`, { method: "PUT", headers: authHeaders, body: JSON.stringify(form) });
+      // n'envoie le mot de passe que s'il a été saisi
+      const payload = { nom: form.nom, email: form.email };
+      if (form.passwd) payload.passwd = form.passwd;
+
+      const res = await fetch(`${API_URL}/${modal.utilisateur.id}`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify(payload),
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Erreur lors de la mise à jour");
       closeModal();
-      loadFactures();
+      loadUtilisateurs();
     } catch (err) {
       setFormError(err.message);
     } finally {
@@ -488,11 +406,14 @@ function Factures() {
     setSubmitting(true);
     setFormError(null);
     try {
-      const res = await fetch(`${API_URL}/${modal.facture.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(`${API_URL}/${modal.utilisateur.id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Erreur lors de la suppression");
       closeModal();
-      loadFactures();
+      loadUtilisateurs();
     } catch (err) {
       setFormError(err.message);
     } finally {
@@ -500,24 +421,18 @@ function Factures() {
     }
   };
 
-  const filtered = factures.filter((f) => {
-    const matchSearch =
-      f.numero?.toLowerCase().includes(search.toLowerCase()) ||
-      f.resident?.toLowerCase().includes(search.toLowerCase()) ||
-      f.appartement?.toLowerCase().includes(search.toLowerCase());
-    const matchStatut = !statutFiltre || f.statut === statutFiltre;
-    return matchSearch && matchStatut;
-  });
+  const filtered = utilisateurs.filter(
+    (u) => u.nom?.toLowerCase().includes(search.toLowerCase()) || u.email?.toLowerCase().includes(search.toLowerCase())
+  );
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const paged = filtered.slice((page - 1) * perPage, page * perPage);
 
   const total = stats?.total ?? 0;
-  const payees = stats?.payees ?? 0;
-  const enAttente = stats?.enAttente ?? 0;
-  const impayees = stats?.impayees ?? 0;
 
   return (
     <div className="flex h-screen bg-slate-50 font-sans text-slate-700">
+
+      {/* Sidebar */}
       <aside className="w-72 bg-gradient-to-b from-indigo-800 to-indigo-600 text-white flex flex-col shrink-0 overflow-y-auto">
         <div className="p-6 flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center">
@@ -554,7 +469,9 @@ function Factures() {
         </div>
       </aside>
 
+      {/* Contenu */}
       <main className="flex-1 overflow-auto">
+
         <div className="flex items-center justify-between gap-4 px-8 py-4 bg-white border-b border-slate-100">
           <div className="relative w-full max-w-md">
             <i className="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 text-sm"></i>
@@ -576,10 +493,11 @@ function Factures() {
         </div>
 
         <div className="p-8">
+
           <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
             <div>
-              <h1 className="text-3xl font-bold text-slate-700">Factures</h1>
-              <p className="text-slate-400 mt-1">Suivez et gérez les factures émises aux copropriétaires.</p>
+              <h1 className="text-3xl font-bold text-slate-700">Utilisateurs</h1>
+              <p className="text-slate-400 mt-1">Gestion des comptes utilisateurs de la plateforme.</p>
             </div>
             <div className="flex items-center gap-3">
               <button
@@ -595,17 +513,15 @@ function Factures() {
                 className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 transition-colors text-white text-sm font-semibold px-4 py-2.5 rounded-xl"
               >
                 <i className="fas fa-plus"></i>
-                Nouvelle facture
+                Nouvel utilisateur
               </button>
             </div>
           </div>
 
           {!loading && !error && (
-            <div className="grid grid-cols-4 gap-5 mb-6">
-              <StatCard icon="fa-file-invoice" bg="bg-indigo-500" label="Facturé ce mois" value={formatMontant(total)} note="Toutes résidences" tone="text-slate-400" />
-              <StatCard icon="fa-check-circle" bg="bg-emerald-500" label="Payées" value={formatMontant(payees)} note="Montant réglé" tone="text-emerald-500" />
-              <StatCard icon="fa-clock" bg="bg-amber-500" label="En attente" value={formatMontant(enAttente)} note="À traiter" tone="text-amber-500" />
-              <StatCard icon="fa-triangle-exclamation" bg="bg-rose-500" label="Impayées" value={formatMontant(impayees)} note="À régler" tone="text-rose-500" />
+            <div className="grid grid-cols-2 gap-5 mb-6 max-w-xl">
+              <StatCard icon="fa-users" bg="bg-indigo-500" label="Total utilisateurs" value={total} />
+              <StatCard icon="fa-filter" bg="bg-slate-400" label="Résultats affichés" value={filtered.length} />
             </div>
           )}
 
@@ -616,19 +532,10 @@ function Factures() {
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(1); }}
                 type="text"
-                placeholder="Rechercher une facture..."
+                placeholder="Rechercher un utilisateur..."
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-100 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200"
               />
             </div>
-
-            <select
-              value={statutFiltre}
-              onChange={(e) => { setStatutFiltre(e.target.value); setPage(1); }}
-              className="px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-100 text-sm text-slate-600"
-            >
-              <option value="">Statut : Tous</option>
-              {STATUT_OPTIONS.map((s) => <option key={s.value} value={s.label}>{s.label}</option>)}
-            </select>
           </div>
 
           {loading && <p className="text-slate-400">Chargement...</p>}
@@ -641,45 +548,31 @@ function Factures() {
                   <thead>
                     <tr className="border-b border-slate-100 text-slate-400 text-left">
                       <th className="py-4 px-6 font-medium">#</th>
-                      <th className="font-medium">Numéro</th>
-                      <th className="font-medium">Résident</th>
-                      <th className="font-medium">Appartement</th>
-                      <th className="font-medium">Montant</th>
-                      <th className="font-medium">Échéance</th>
-                      <th className="font-medium">Statut</th>
+                      <th className="font-medium">Nom</th>
+                      <th className="font-medium">Email</th>
                       <th className="font-medium text-right pr-6">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {paged.map((f, i) => {
+                    {paged.map((u, i) => {
                       const color = AVATAR_COLORS[i % AVATAR_COLORS.length];
                       return (
-                        <tr key={f.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors">
+                        <tr key={u.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors">
                           <td className="py-4 px-6 text-slate-400">{(page - 1) * perPage + i + 1}</td>
-                          <td className="font-semibold text-slate-700 whitespace-nowrap">{f.numero || "–"}</td>
                           <td>
                             <div className="flex items-center gap-3">
                               <span className={`w-9 h-9 rounded-full ${color.bg} ${color.text} flex items-center justify-center text-xs font-bold shrink-0`}>
-                                {initialsOf(f.resident)}
+                                {initialsOf(u.nom)}
                               </span>
-                              <span className="text-slate-700 whitespace-nowrap">{f.resident || "–"}</span>
+                              <span className="font-semibold text-slate-700 whitespace-nowrap">{u.nom}</span>
                             </div>
                           </td>
-                          <td className="text-slate-500">{f.appartement || "–"}</td>
-                          <td className="font-semibold text-slate-700 whitespace-nowrap">{formatMontant(f.montant)}</td>
-                          <td className="text-slate-500 whitespace-nowrap">{formatDate(f.date_echeance)}</td>
-                          <td><StatutBadge statut={f.statut} /></td>
+                          <td className="text-slate-500 whitespace-nowrap">{u.email}</td>
                           <td className="pr-6">
                             <div className="flex items-center justify-end gap-3 text-slate-400">
-                              <button onClick={() => openView(f)} className="hover:text-indigo-500 transition-colors" title="Voir">
-                                <i className="fas fa-eye"></i>
-                              </button>
-                              <button onClick={() => openEdit(f)} className="hover:text-indigo-500 transition-colors" title="Modifier">
-                                <i className="fas fa-pen"></i>
-                              </button>
-                              <button onClick={() => openDelete(f)} className="hover:text-rose-500 transition-colors" title="Supprimer">
-                                <i className="fas fa-trash-alt"></i>
-                              </button>
+                              <button onClick={() => openView(u)} className="hover:text-indigo-500 transition-colors"><i className="fas fa-eye"></i></button>
+                              <button onClick={() => openEdit(u)} className="hover:text-indigo-500 transition-colors"><i className="fas fa-pen"></i></button>
+                              <button onClick={() => openDelete(u)} className="hover:text-rose-500 transition-colors"><i className="fas fa-trash-alt"></i></button>
                             </div>
                           </td>
                         </tr>
@@ -697,36 +590,20 @@ function Factures() {
               </div>
             </>
           )}
+
         </div>
       </main>
 
       {modal?.mode === "add" && (
-        <Modal title="Nouvelle facture" onClose={closeModal}>
-          <FactureForm
-            coproprietaires={coproprietaires}
-            appartements={appartements}
-            residences={residences}
-            onCancel={closeModal}
-            onSubmit={handleCreate}
-            submitting={submitting}
-            error={formError}
-          />
+        <Modal title="Nouvel utilisateur" onClose={closeModal}>
+          <UtilisateurForm onCancel={closeModal} onSubmit={handleCreate} submitting={submitting} error={formError} />
         </Modal>
       )}
 
       {modal?.mode === "edit" && (
-        <Modal title="Modifier la facture" onClose={closeModal}>
-          {modal.facture ? (
-            <FactureForm
-              initial={modal.facture}
-              coproprietaires={coproprietaires}
-              appartements={appartements}
-              residences={residences}
-              onCancel={closeModal}
-              onSubmit={handleUpdate}
-              submitting={submitting}
-              error={formError}
-            />
+        <Modal title="Modifier l'utilisateur" onClose={closeModal}>
+          {modal.utilisateur ? (
+            <UtilisateurForm initial={modal.utilisateur} onCancel={closeModal} onSubmit={handleUpdate} submitting={submitting} error={formError} />
           ) : (
             <p className="text-slate-400 text-sm">Chargement...</p>
           )}
@@ -734,18 +611,18 @@ function Factures() {
       )}
 
       {modal?.mode === "view" && (
-        <Modal title="Détails de la facture" onClose={closeModal}>
-          <ViewDetails facture={modal.facture} onClose={closeModal} />
+        <Modal title="Détails de l'utilisateur" onClose={closeModal}>
+          <ViewDetails utilisateur={modal.utilisateur} onClose={closeModal} />
         </Modal>
       )}
 
       {modal?.mode === "delete" && (
-        <Modal title="Supprimer la facture" onClose={closeModal}>
-          <DeleteConfirm facture={modal.facture} onCancel={closeModal} onConfirm={handleDelete} submitting={submitting} error={formError} />
+        <Modal title="Supprimer l'utilisateur" onClose={closeModal}>
+          <DeleteConfirm utilisateur={modal.utilisateur} onCancel={closeModal} onConfirm={handleDelete} submitting={submitting} error={formError} />
         </Modal>
       )}
     </div>
   );
 }
 
-export default Factures;
+export default Utilisateurs;

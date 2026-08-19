@@ -893,21 +893,11 @@ router.delete("/annonces/:id", async (req, res) => {
     res.status(500).json({ error: "Erreur lors de la suppression de l'annonce" });
   }
 });
- /* ================================================================ */
-/* FACTURES — CRUD COMPLET                                          */
-/* ================================================================ */
-
-
-/* ---------------------------------------------------------------- */
-/* GET /factures                                                    */
-/* Stats + liste                                                    */
-/* ---------------------------------------------------------------- */
 
 router.get("/factures", async (req, res) => {
 
   try {
 
-    /* ---------------------- Total factures ---------------------- */
 
     const [{ total }] = await query(`
       SELECT COUNT(*) AS total
@@ -915,9 +905,6 @@ router.get("/factures", async (req, res) => {
       WHERE MONTH(date_emission) = MONTH(CURDATE())
         AND YEAR(date_emission) = YEAR(CURDATE())
     `);
-
-
-    /* ---------------------- Montant total ----------------------- */
 
     const [{ montantTotal }] = await query(`
       SELECT COALESCE(SUM(montant), 0) AS montantTotal
@@ -1652,4 +1639,234 @@ router.delete("/factures/:id", async (req, res) => {
   }
 
 });
+// Sécurité : s'assurer que le dossier existe à chaque appel, pas seulement au démarrage
+function ensureUploadsDir() {
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// GET /rapports/ping → route de test rapide pour vérifier que le routeur répond
+router.get("/rapports/ping", (req, res) => {
+  res.json({ ok: true, message: "Le routeur rapports fonctionne" });
+});
+
+router.post("/rapports", async (req, res) => {
+  console.log("📄 POST /rapports reçu :", req.body);
+
+  const { titre, type, periode_debut, periode_fin, residence_id } = req.body;
+
+  if (!titre || !periode_debut || !periode_fin) {
+    return res.status(400).json({ error: "Titre et période (début/fin) requis" });
+  }
+
+  try {
+    ensureUploadsDir();
+
+    const residenceClause = residence_id ? "AND residence_id = ?" : "";
+    const residenceParam = residence_id ? [residence_id] : [];
+
+    // Chaque agrégat est isolé : si une requête échoue (colonne inexistante...),
+    // on log l'erreur précise et on continue avec 0 au lieu de tout faire planter.
+    const safeQuery = async (label, sql, params) => {
+      try {
+        const rows = await query(sql, params);
+        return rows[0] ? Object.values(rows[0])[0] : 0;
+      } catch (e) {
+        console.error(`🔴 Erreur SQL sur "${label}":`, e.message);
+        return 0;
+      }
+    };
+
+    const totalPaiements = await safeQuery(
+      "totalPaiements",
+      `SELECT COALESCE(SUM(p.montant),0) AS v FROM paiements p
+       LEFT JOIN charges ch ON ch.id = p.charge_id
+       WHERE p.statut = 'valide' AND p.date_paiement BETWEEN ? AND ? ${residence_id ? "AND ch.residence_id = ?" : ""}`,
+      [periode_debut, periode_fin, ...residenceParam]
+    );
+    const totalCharges = await safeQuery(
+      "totalCharges",
+      `SELECT COALESCE(SUM(montant),0) AS v FROM charges WHERE date_echeance BETWEEN ? AND ? ${residenceClause}`,
+      [periode_debut, periode_fin, ...residenceParam]
+    );
+    const totalDepenses = await safeQuery(
+      "totalDepenses",
+      `SELECT COALESCE(SUM(montant),0) AS v FROM depenses WHERE date_depense BETWEEN ? AND ? ${residenceClause}`,
+      [periode_debut, periode_fin, ...residenceParam]
+    );
+    const totalFactures = await safeQuery(
+      "totalFactures",
+      `SELECT COALESCE(SUM(montant),0) AS v FROM factures WHERE date_emission BETWEEN ? AND ? ${residenceClause}`,
+      [periode_debut, periode_fin, ...residenceParam]
+    );
+    const nbReclamations = await safeQuery(
+      "nbReclamations",
+      `SELECT COUNT(*) AS v FROM reclamations WHERE date_creation BETWEEN ? AND ?`,
+      [periode_debut, periode_fin]
+    );
+
+    console.log("✅ Agrégats calculés :", { totalPaiements, totalCharges, totalDepenses, totalFactures, nbReclamations });
+
+    // --- Génération du PDF, isolée dans son propre try/catch ---
+    const filename = `rapport_${Date.now()}.pdf`;
+    const filePath = path.join(uploadsDir, filename);
+
+    await new Promise((resolve, reject) => {
+      try {
+        const doc = new PDFDocument({ margin: 50 });
+        const stream = fs.createWriteStream(filePath);
+
+        stream.on("finish", resolve);
+        stream.on("error", (e) => reject(e));
+        doc.on("error", (e) => reject(e));
+
+        doc.pipe(stream);
+
+        doc.fontSize(20).font("Helvetica-Bold").text(titre, { align: "center" });
+        doc.moveDown(0.5);
+        doc.fontSize(11).font("Helvetica").fillColor("#666")
+          .text(`Période du ${periode_debut} au ${periode_fin}`, { align: "center" });
+        doc.moveDown(2);
+
+        const lignes = [
+          ["Paiements reçus (validés)", `${Number(totalPaiements).toFixed(2)} MAD`],
+          ["Charges émises", `${Number(totalCharges).toFixed(2)} MAD`],
+          ["Dépenses engagées", `${Number(totalDepenses).toFixed(2)} MAD`],
+          ["Factures émises", `${Number(totalFactures).toFixed(2)} MAD`],
+          ["Solde (paiements - dépenses)", `${(Number(totalPaiements) - Number(totalDepenses)).toFixed(2)} MAD`],
+          ["Réclamations enregistrées", `${nbReclamations}`],
+        ];
+
+        doc.fontSize(13).fillColor("#000").font("Helvetica-Bold").text("Synthèse");
+        doc.moveDown(0.5);
+        lignes.forEach(([label, value]) => {
+          doc.fontSize(11).font("Helvetica").fillColor("#333").text(label, 50, doc.y, { continued: true, width: 350 });
+          doc.font("Helvetica-Bold").text(value, { align: "right" });
+          doc.moveDown(0.3);
+        });
+
+        doc.moveDown(2);
+        doc.fontSize(9).fillColor("#999").text(`Généré le ${new Date().toLocaleString("fr-FR")}`, { align: "center" });
+
+        doc.end();
+      } catch (syncErr) {
+        reject(syncErr);
+      }
+    });
+
+    console.log("✅ PDF généré :", filename);
+
+    const admin_id = req.user?.id || null;
+
+    const result = await query(
+      `INSERT INTO rapports (titre, type, periode_debut, periode_fin, residence_id, admin_id, fichier, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [titre, type || "financier", periode_debut, periode_fin, residence_id || null, admin_id, filename]
+    );
+
+    console.log("✅ Rapport inséré en base, id =", result.insertId);
+    res.status(201).json({ id: result.insertId, message: "Rapport généré" });
+  } catch (err) {
+    console.error("🔴 Erreur génération rapport:", err);
+    res.status(500).json({ error: err.message || "Erreur lors de la génération du rapport" });
+  }
+});
+router.get("/utilisateurs", async (req, res) => {
+  try {
+    const [{ total }] = await query("SELECT COUNT(*) AS total FROM utilisateur");
+    const utilisateurs = await query("SELECT id, nom, email FROM utilisateur ORDER BY nom ASC");
+    res.json({ stats: { total }, utilisateurs });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors du chargement des utilisateurs" });
+  }
+});
+ 
+// GET /utilisateurs/:id → un seul utilisateur (sans le mot de passe)
+router.get("/utilisateurs/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const results = await query("SELECT id, nom, email FROM utilisateur WHERE id = ?", [id]);
+    if (results.length === 0) return res.status(404).json({ error: "Utilisateur introuvable" });
+    res.json(results[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erreur lors du chargement de l'utilisateur" });
+  }
+});
+ 
+// POST /utilisateurs → créer un utilisateur
+router.post("/utilisateurs", async (req, res) => {
+  const { nom, email, passwd } = req.body;
+ 
+  if (!nom || !email || !passwd) {
+    return res.status(400).json({ error: "Nom, email et mot de passe requis" });
+  }
+ 
+  try {
+    const hashedPasswd = await bcrypt.hash(passwd, 10);
+    const result = await query("INSERT INTO utilisateur (nom, email, passwd) VALUES (?, ?, ?)", [
+      nom,
+      email,
+      hashedPasswd,
+    ]);
+    res.status(201).json({ id: result.insertId, message: "Utilisateur créé" });
+  } catch (err) {
+    console.error(err);
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ error: "Cet email est déjà utilisé" });
+    }
+    res.status(500).json({ error: "Erreur lors de la création de l'utilisateur" });
+  }
+});
+ 
+// PUT /utilisateurs/:id → modifier un utilisateur
+// Le mot de passe n'est mis à jour que s'il est fourni (laisser vide = inchangé)
+router.put("/utilisateurs/:id", async (req, res) => {
+  const { id } = req.params;
+  const { nom, email, passwd } = req.body;
+ 
+  if (!nom || !email) {
+    return res.status(400).json({ error: "Nom et email requis" });
+  }
+ 
+  try {
+    const rows = await query("SELECT id FROM utilisateur WHERE id = ?", [id]);
+    if (rows.length === 0) return res.status(404).json({ error: "Utilisateur introuvable" });
+ 
+    if (passwd) {
+      const hashedPasswd = await bcrypt.hash(passwd, 10);
+      await query("UPDATE utilisateur SET nom = ?, email = ?, passwd = ? WHERE id = ?", [nom, email, hashedPasswd, id]);
+    } else {
+      await query("UPDATE utilisateur SET nom = ?, email = ? WHERE id = ?", [nom, email, id]);
+    }
+ 
+    res.json({ message: "Utilisateur mis à jour" });
+  } catch (err) {
+    console.error(err);
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({ error: "Cet email est déjà utilisé" });
+    }
+    res.status(500).json({ error: "Erreur lors de la mise à jour de l'utilisateur" });
+  }
+});
+ 
+// DELETE /utilisateurs/:id → supprimer un utilisateur
+// ⚠️ si cet utilisateur est lié à un copropriétaire (utilisateur_id dans `coproprietaires`),
+// la suppression échouera à cause de la contrainte de clé étrangère — c'est voulu, pour éviter
+// de casser les données liées. Supprime d'abord le copropriétaire concerné si besoin.
+router.delete("/utilisateurs/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await query("DELETE FROM utilisateur WHERE id = ?", [id]);
+    if (result.affectedRows === 0) return res.status(404).json({ error: "Utilisateur introuvable" });
+    res.json({ message: "Utilisateur supprimé" });
+  } catch (err) {
+    console.error(err);
+    if (err.code === "ER_ROW_IS_REFERENCED_2" || err.code === "ER_ROW_IS_REFERENCED") {
+      return res.status(409).json({ error: "Impossible de supprimer : cet utilisateur est lié à d'autres données (copropriétaire, annonce...)" });
+    }
+    res.status(500).json({ error: "Erreur lors de la suppression de l'utilisateur" });
+  }
+});
+ 
 module.exports = router;
