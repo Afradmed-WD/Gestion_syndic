@@ -522,6 +522,7 @@ function Reclamations() {
   };
 
   const filtered = reclamations.filter(
+    // 
     (r) => r.titre?.toLowerCase().includes(search.toLowerCase()) || r.resident?.toLowerCase().includes(search.toLowerCase())
   );
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
